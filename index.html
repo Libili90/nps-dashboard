@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard NPS - Analyse Interactive</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>📊 Dashboard NPS - Analyse Interactive</h1>
+            <p class="subtitle">Analyse approfondie des retours clients avec IA</p>
+        </header>
+
+        <!-- Upload Section -->
+        <section class="upload-section" id="uploadSection">
+            <div class="upload-card">
+                <h2>📁 Import des données</h2>
+                <div class="upload-grid">
+                    <div class="upload-box">
+                        <label for="compoFile" class="upload-label">
+                            <span class="upload-icon">📋</span>
+                            <span class="upload-text">Fichier Compo (Logs)</span>
+                            <span class="upload-hint">Glissez ou cliquez</span>
+                        </label>
+                        <input type="file" id="compoFile" accept=".xlsx,.xls" class="file-input">
+                        <div class="file-status" id="compoStatus"></div>
+                    </div>
+                    <div class="upload-box">
+                        <label for="npsFile" class="upload-label">
+                            <span class="upload-icon">📈</span>
+                            <span class="upload-text">Fichier NPS (Exportation)</span>
+                            <span class="upload-hint">Glissez ou cliquez</span>
+                        </label>
+                        <input type="file" id="npsFile" accept=".xlsx,.xls" class="file-input">
+                        <div class="file-status" id="npsStatus"></div>
+                    </div>
+                </div>
+                <button id="processBtn" class="btn-primary" disabled>Analyser les données</button>
+            </div>
+
+            <!-- API Configuration -->
+            <div class="api-config">
+                <h3>🔑 Configuration API (Optionnel)</h3>
+                <div class="api-grid">
+                    <div class="api-option">
+                        <input type="radio" id="apiOpenAI" name="apiChoice" value="openai" checked>
+                        <label for="apiOpenAI">OpenAI GPT-4</label>
+                        <input type="text" id="openaiKey" placeholder="sk-..." class="api-input">
+                    </div>
+                    <div class="api-option">
+                        <input type="radio" id="apiGemini" name="apiChoice" value="gemini">
+                        <label for="apiGemini">Google Gemini</label>
+                        <input type="text" id="geminiKey" placeholder="AIza..." class="api-input">
+                    </div>
+                </div>
+                <p class="api-note">💡 L'analyse IA des verbatims nécessite une clé API valide</p>
+            </div>
+        </section>
+
+        <!-- Dashboard Section (Hidden initially) -->
+        <section class="dashboard-section" id="dashboardSection" style="display: none;">
+            
+            <!-- Filters -->
+            <div class="filters-card">
+                <h2>🔍 Filtres intelligents</h2>
+                <div class="filters-grid">
+                    <div class="filter-group">
+                        <label>Log Agent (auto-complétion)</label>
+                        <input type="text" id="filterLog" placeholder="Tapez le début du log..." class="filter-input">
+                        <div id="logSuggestions" class="suggestions"></div>
+                    </div>
+                    <div class="filter-group">
+                        <label>Nom/Prénom Agent</label>
+                        <input type="text" id="filterAgent" placeholder="Tapez le nom..." class="filter-input">
+                        <div id="agentSuggestions" class="suggestions"></div>
+                    </div>
+                    <div class="filter-group">
+                        <label>Encadrants (TL)</label>
+                        <div id="filterTL" class="checkbox-group"></div>
+                    </div>
+                    <div class="filter-group">
+                        <label>Compétences</label>
+                        <div id="filterCompetence" class="checkbox-group"></div>
+                    </div>
+                    <div class="filter-group">
+                        <label>Date fin</label>
+                        <select id="filterDateType" class="filter-select">
+                            <option value="all">Toutes dates</option>
+                            <option value="active">Agents actifs (date vide)</option>
+                            <option value="after">Après le...</option>
+                            <option value="before">Avant le...</option>
+                        </select>
+                        <input type="date" id="filterDate" class="filter-input" style="display: none;">
+                    </div>
+                    <div class="filter-group">
+                        <label>Période NPS</label>
+                        <input type="month" id="filterPeriod" class="filter-input">
+                    </div>
+                </div>
+                <div class="filter-actions">
+                    <button id="applyFilters" class="btn-primary">Appliquer les filtres</button>
+                    <button id="resetFilters" class="btn-secondary">Réinitialiser</button>
+                    <button id="exportCSV" class="btn-export">📥 Exporter CSV</button>
+                </div>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="kpi-grid" id="kpiGrid">
+                <div class="kpi-card">
+                    <div class="kpi-icon">📊</div>
+                    <div class="kpi-content">
+                        <h3>NPS Global</h3>
+                        <div class="kpi-value" id="npsGlobal">-</div>
+                        <div class="kpi-trend" id="npsTrend"></div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon">📝</div>
+                    <div class="kpi-content">
+                        <h3>Nb Enquêtes</h3>
+                        <div class="kpi-value" id="nbSurveys">-</div>
+                        <div class="kpi-detail" id="surveyDetail"></div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon">✅</div>
+                    <div class="kpi-content">
+                        <h3>Taux Résolution</h3>
+                        <div class="kpi-value" id="resolutionRate">-</div>
+                        <div class="kpi-detail" id="resolutionDetail"></div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon">📈</div>
+                    <div class="kpi-content">
+                        <h3>Évolution</h3>
+                        <div class="kpi-value" id="evolution">-</div>
+                        <div class="kpi-detail" id="evolutionDetail"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Grid -->
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h3>📈 Évolution du NPS</h3>
+                    <canvas id="npsEvolutionChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>👥 NPS par Encadrant (Top/Bottom 10)</h3>
+                    <canvas id="npsByTLChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>🎯 NPS par Compétence</h3>
+                    <canvas id="npsByCompetenceChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>📊 Distribution des Scores</h3>
+                    <canvas id="scoreDistributionChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Verbatim Analysis -->
+            <div class="analysis-card" id="analysisCard">
+                <h2>🤖 Analyse IA des Verbatims</h2>
+                <button id="analyzeBtn" class="btn-primary">Lancer l'analyse IA</button>
+                <div id="analysisResults" class="analysis-results" style="display: none;">
+                    <div class="analysis-section">
+                        <h3>🎯 Thèmes principaux</h3>
+                        <div id="themes"></div>
+                    </div>
+                    <div class="analysis-section">
+                        <h3>⚠️ Points faibles identifiés</h3>
+                        <div id="weaknesses"></div>
+                    </div>
+                    <div class="analysis-section">
+                        <h3>📋 Plan d'action 30/60/90 jours</h3>
+                        <div id="actionPlan"></div>
+                    </div>
+                    <div class="analysis-section">
+                        <h3>🏷️ Tags des verbatims</h3>
+                        <div id="tags"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Table -->
+            <div class="table-card">
+                <h2>📋 Détail par Agent</h2>
+                <div class="table-controls">
+                    <input type="text" id="tableSearch" placeholder="Rechercher dans la table..." class="table-search">
+                    <select id="tableSort" class="table-sort">
+                        <option value="nps-desc">NPS (décroissant)</option>
+                        <option value="nps-asc">NPS (croissant)</option>
+                        <option value="surveys-desc">Nb Enquêtes (décroissant)</option>
+                        <option value="agent-asc">Agent (A-Z)</option>
+                    </select>
+                </div>
+                <div class="table-wrapper">
+                    <table id="detailTable">
+                        <thead>
+                            <tr>
+                                <th>Log</th>
+                                <th>Agent</th>
+                                <th>Encadrant</th>
+                                <th>Compétence</th>
+                                <th>NPS</th>
+                                <th>Nb Enquêtes</th>
+                                <th>Taux Résolution</th>
+                                <th>Promoteurs</th>
+                                <th>Passifs</th>
+                                <th>Détracteurs</th>
+                                <th>Date Fin</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Traitement en cours...</p>
+        </div>
+
+    </div>
+
+    <script src="main.js"></script>
+</body>
+</html>
