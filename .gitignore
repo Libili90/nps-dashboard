@@ -1,0 +1,107 @@
+# ========================================
+# FICHIERS EXCEL - NE PAS COMMITER
+# ========================================
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+
+# Dossier de données
+/data/
+/exports/
+
+# ========================================
+# API KEYS - CRITIQUE - NE JAMAIS COMMITER
+# ========================================
+.env
+.env.local
+.env.production
+config.js
+secrets.json
+api-keys.txt
+
+# ========================================
+# SYSTÈME D'EXPLOITATION
+# ========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# ========================================
+# ÉDITEURS DE CODE
+# ========================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ========================================
+# NODE.JS (si utilisé)
+# ========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# ========================================
+# LOGS
+# ========================================
+logs/
+*.log
+
+# ========================================
+# FICHIERS TEMPORAIRES
+# ========================================
+tmp/
+temp/
+*.tmp
+*.bak
+*.cache
+
+# ========================================
+# FICHIERS DE BUILD
+# ========================================
+dist/
+build/
+.cache/
+
+# ========================================
+# FICHIERS DE SAUVEGARDE
+# ========================================
+backup/
+*.backup
+*.old
+
+# ========================================
+# FICHIERS TESTS
+# ========================================
+test-data/
+*.test.xlsx
+*.test.csv
