@@ -10,219 +10,241 @@
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
+        <!-- Header avec bouton Data -->
         <header class="header">
             <h1>📊 Dashboard NPS - Analyse Interactive</h1>
             <p class="subtitle">Analyse approfondie des retours clients avec IA</p>
+            <button id="dataBtn" class="btn-data">📂 Data</button>
         </header>
 
-        <!-- Upload Section -->
-        <section class="upload-section" id="uploadSection">
-            <div class="upload-card">
-                <h2>📁 Import des données</h2>
-                <div class="upload-grid">
-                    <div class="upload-box">
-                        <label for="compoFile" class="upload-label">
-                            <span class="upload-icon">📋</span>
-                            <span class="upload-text">Fichier Compo (Logs)</span>
-                            <span class="upload-hint">Glissez ou cliquez</span>
-                        </label>
-                        <input type="file" id="compoFile" accept=".xlsx,.xls" class="file-input">
-                        <div class="file-status" id="compoStatus"></div>
+        <!-- Modal Upload (Hidden by default) -->
+        <div class="modal-overlay" id="uploadModal" style="display: none;">
+            <div class="modal-content">
+                <button class="modal-close" id="closeModal">✕</button>
+                <h2>🔒 Import des données</h2>
+                
+                <!-- Password Protection -->
+                <div id="passwordSection">
+                    <div class="password-input-group">
+                        <input type="password" id="passwordInput" placeholder="Entrez le mot de passe..." class="password-input">
+                        <button id="unlockBtn" class="btn-unlock">Déverrouiller</button>
                     </div>
-                    <div class="upload-box">
-                        <label for="npsFile" class="upload-label">
-                            <span class="upload-icon">📈</span>
-                            <span class="upload-text">Fichier NPS (Exportation)</span>
-                            <span class="upload-hint">Glissez ou cliquez</span>
-                        </label>
-                        <input type="file" id="npsFile" accept=".xlsx,.xls" class="file-input">
-                        <div class="file-status" id="npsStatus"></div>
-                    </div>
+                    <p class="password-hint">🔑 Mot de passe requis pour accéder aux données</p>
                 </div>
-                <button id="processBtn" class="btn-primary" disabled>Analyser les données</button>
-            </div>
 
-            <!-- API Configuration -->
-            <div class="api-config">
-                <h3>🔑 Configuration API (Optionnel)</h3>
-                <div class="api-grid">
-                    <div class="api-option">
-                        <input type="radio" id="apiOpenAI" name="apiChoice" value="openai" checked>
-                        <label for="apiOpenAI">OpenAI GPT-4</label>
-                        <input type="text" id="openaiKey" placeholder="sk-..." class="api-input">
+                <!-- Upload Section (Hidden until password is correct) -->
+                <div id="uploadSection" style="display: none;">
+                    <div class="upload-grid">
+                        <div class="upload-box">
+                            <label for="compoFile" class="upload-label">
+                                <span class="upload-icon">📋</span>
+                                <span class="upload-text">Fichier Compo (Logs)</span>
+                                <span class="upload-hint">Glissez ou cliquez</span>
+                            </label>
+                            <input type="file" id="compoFile" accept=".xlsx,.xls" class="file-input">
+                            <div class="file-status" id="compoStatus"></div>
+                        </div>
+                        <div class="upload-box">
+                            <label for="npsFile" class="upload-label">
+                                <span class="upload-icon">📈</span>
+                                <span class="upload-text">Fichier NPS (Exportation)</span>
+                                <span class="upload-hint">Glissez ou cliquez</span>
+                            </label>
+                            <input type="file" id="npsFile" accept=".xlsx,.xls" class="file-input">
+                            <div class="file-status" id="npsStatus"></div>
+                        </div>
                     </div>
-                    <div class="api-option">
-                        <input type="radio" id="apiGemini" name="apiChoice" value="gemini">
-                        <label for="apiGemini">Google Gemini</label>
-                        <input type="text" id="geminiKey" placeholder="AIza..." class="api-input">
-                    </div>
+                    <button id="processBtn" class="btn-primary" disabled>Analyser les données</button>
                 </div>
-                <p class="api-note">💡 L'analyse IA des verbatims nécessite une clé API valide</p>
             </div>
-        </section>
+        </div>
 
-        <!-- Dashboard Section (Hidden initially) -->
-        <section class="dashboard-section" id="dashboardSection" style="display: none;">
+        <!-- Dashboard Section (Visible by default, shows message until data loaded) -->
+        <section class="dashboard-section" id="dashboardSection">
             
-            <!-- Filters -->
-            <div class="filters-card">
-                <h2>🔍 Filtres intelligents <span style="font-size: 0.8rem; opacity: 0.7;">(Auto-mise à jour)</span></h2>
-                <div class="filters-grid">
-                    <div class="filter-group">
-                        <label>🔑 Log Agent</label>
-                        <input type="text" id="filterLog" placeholder="Tapez le début du log..." class="filter-input">
-                        <div id="logSuggestions" class="suggestions"></div>
+            <!-- Empty State -->
+            <div class="empty-state" id="emptyState">
+                <div class="empty-icon">📊</div>
+                <h2>Aucune donnée chargée</h2>
+                <p>Cliquez sur le bouton <strong>"📂 Data"</strong> en haut à droite pour importer vos fichiers Excel</p>
+            </div>
+
+            <!-- Data Loaded Section (Hidden until data is processed) -->
+            <div id="dataSection" style="display: none;">
+                
+                <!-- Filters -->
+                <div class="filters-card">
+                    <h2>🔍 Filtres intelligents <span style="font-size: 0.8rem; opacity: 0.7;">(Optionnel)</span></h2>
+                    <div class="filters-grid">
+                        <div class="filter-group">
+                            <label>🔑 Log Agent</label>
+                            <input type="text" id="filterLog" placeholder="Rechercher un log..." class="filter-input">
+                            <div id="logSuggestions" class="suggestions"></div>
+                        </div>
+                        <div class="filter-group">
+                            <label>👤 Nom/Prénom Agent</label>
+                            <input type="text" id="filterAgent" placeholder="Rechercher un agent..." class="filter-input">
+                            <div id="agentSuggestions" class="suggestions"></div>
+                        </div>
+                        <div class="filter-group">
+                            <label>👥 Encadrants (TL)</label>
+                            <div id="filterTL" class="checkbox-group"></div>
+                        </div>
+                        <div class="filter-group">
+                            <label>🎯 Compétences</label>
+                            <div id="filterCompetence" class="checkbox-group"></div>
+                        </div>
+                        <div class="filter-group">
+                            <label>📅 Statut Agent</label>
+                            <select id="filterDateType" class="filter-select">
+                                <option value="all">Tous les agents</option>
+                                <option value="active">Agents actifs uniquement</option>
+                                <option value="after">Démission après le...</option>
+                                <option value="before">Démission avant le...</option>
+                            </select>
+                            <input type="date" id="filterDate" class="filter-input" style="display: none;">
+                        </div>
+                        <div class="filter-group">
+                            <label>📆 Période NPS</label>
+                            <input type="month" id="filterPeriod" class="filter-input">
+                        </div>
                     </div>
-                    <div class="filter-group">
-                        <label>👤 Nom/Prénom Agent</label>
-                        <input type="text" id="filterAgent" placeholder="Tapez le nom..." class="filter-input">
-                        <div id="agentSuggestions" class="suggestions"></div>
+                    <div class="filter-actions">
+                        <button id="resetFilters" class="btn-secondary">🔁 Réinitialiser</button>
+                        <button id="exportCSV" class="btn-export">📥 Exporter CSV</button>
                     </div>
-                    <div class="filter-group">
-                        <label>👥 Encadrants (TL)</label>
-                        <div id="filterTL" class="checkbox-group"></div>
+                </div>
+
+                <!-- KPI Cards -->
+                <div class="kpi-grid" id="kpiGrid">
+                    <div class="kpi-card">
+                        <div class="kpi-icon">📊</div>
+                        <div class="kpi-content">
+                            <h3>NPS Global</h3>
+                            <div class="kpi-value" id="npsGlobal">-</div>
+                            <div class="kpi-trend" id="npsTrend"></div>
+                        </div>
                     </div>
-                    <div class="filter-group">
-                        <label>🎯 Compétences</label>
-                        <div id="filterCompetence" class="checkbox-group"></div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon">📝</div>
+                        <div class="kpi-content">
+                            <h3>Nb Enquêtes</h3>
+                            <div class="kpi-value" id="nbSurveys">-</div>
+                            <div class="kpi-detail" id="surveyDetail"></div>
+                        </div>
                     </div>
-                    <div class="filter-group">
-                        <label>📅 Statut Agent</label>
-                        <select id="filterDateType" class="filter-select">
-                            <option value="all">Tous les agents</option>
-                            <option value="active" selected>Agents actifs uniquement</option>
-                            <option value="after">Démission après le...</option>
-                            <option value="before">Démission avant le...</option>
+                    <div class="kpi-card">
+                        <div class="kpi-icon">✅</div>
+                        <div class="kpi-content">
+                            <h3>Taux Résolution</h3>
+                            <div class="kpi-value" id="resolutionRate">-</div>
+                            <div class="kpi-detail" id="resolutionDetail"></div>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon">📈</div>
+                        <div class="kpi-content">
+                            <h3>Évolution</h3>
+                            <div class="kpi-value" id="evolution">-</div>
+                            <div class="kpi-detail" id="evolutionDetail"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Grid -->
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>📈 Évolution du NPS</h3>
+                        <canvas id="npsEvolutionChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>👥 NPS par Encadrant (Top/Bottom 10)</h3>
+                        <canvas id="npsByTLChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>🎯 NPS par Compétence</h3>
+                        <canvas id="npsByCompetenceChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>📊 Distribution des Scores</h3>
+                        <canvas id="scoreDistributionChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Verbatim Analysis -->
+                <div class="analysis-card" id="analysisCard">
+                    <h2>🤖 Analyse IA des Verbatims</h2>
+                    
+                    <!-- API Config inline -->
+                    <div class="api-config-inline">
+                        <div class="api-option">
+                            <input type="radio" id="apiOpenAI" name="apiChoice" value="openai" checked>
+                            <label for="apiOpenAI">OpenAI GPT-4</label>
+                            <input type="text" id="openaiKey" placeholder="sk-..." class="api-input">
+                        </div>
+                        <div class="api-option">
+                            <input type="radio" id="apiGemini" name="apiChoice" value="gemini">
+                            <label for="apiGemini">Google Gemini</label>
+                            <input type="text" id="geminiKey" placeholder="AIza..." class="api-input">
+                        </div>
+                    </div>
+                    
+                    <button id="analyzeBtn" class="btn-primary">Lancer l'analyse IA</button>
+                    <div id="analysisResults" class="analysis-results" style="display: none;">
+                        <div class="analysis-section">
+                            <h3>🎯 Thèmes principaux</h3>
+                            <div id="themes"></div>
+                        </div>
+                        <div class="analysis-section">
+                            <h3>⚠️ Points faibles identifiés</h3>
+                            <div id="weaknesses"></div>
+                        </div>
+                        <div class="analysis-section">
+                            <h3>📋 Plan d'action 30/60/90 jours</h3>
+                            <div id="actionPlan"></div>
+                        </div>
+                        <div class="analysis-section">
+                            <h3>🏷️ Tags des verbatims</h3>
+                            <div id="tags"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detailed Table -->
+                <div class="table-card">
+                    <h2>📋 Détail par Agent</h2>
+                    <div class="table-controls">
+                        <input type="text" id="tableSearch" placeholder="Rechercher dans la table..." class="table-search">
+                        <select id="tableSort" class="table-sort">
+                            <option value="nps-desc">NPS (décroissant)</option>
+                            <option value="nps-asc">NPS (croissant)</option>
+                            <option value="surveys-desc">Nb Enquêtes (décroissant)</option>
+                            <option value="agent-asc">Agent (A-Z)</option>
                         </select>
-                        <input type="date" id="filterDate" class="filter-input" style="display: none;">
                     </div>
-                    <div class="filter-group">
-                        <label>📆 Période NPS</label>
-                        <input type="month" id="filterPeriod" class="filter-input">
+                    <div class="table-wrapper">
+                        <table id="detailTable">
+                            <thead>
+                                <tr>
+                                    <th>Log</th>
+                                    <th>Agent</th>
+                                    <th>Encadrant</th>
+                                    <th>Compétence</th>
+                                    <th>NPS</th>
+                                    <th>Nb Enquêtes</th>
+                                    <th>Taux Résolution</th>
+                                    <th>Promoteurs</th>
+                                    <th>Passifs</th>
+                                    <th>Détracteurs</th>
+                                    <th>Date Fin</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody"></tbody>
+                        </table>
                     </div>
                 </div>
-                <div class="filter-actions">
-                    <button id="applyFilters" class="btn-secondary">🔄 Rafraîchir maintenant</button>
-                    <button id="resetFilters" class="btn-secondary">🔁 Réinitialiser</button>
-                    <button id="exportCSV" class="btn-export">📥 Exporter CSV</button>
-                </div>
-            </div>
 
-            <!-- KPI Cards -->
-            <div class="kpi-grid" id="kpiGrid">
-                <div class="kpi-card">
-                    <div class="kpi-icon">📊</div>
-                    <div class="kpi-content">
-                        <h3>NPS Global</h3>
-                        <div class="kpi-value" id="npsGlobal">-</div>
-                        <div class="kpi-trend" id="npsTrend"></div>
-                    </div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-icon">📝</div>
-                    <div class="kpi-content">
-                        <h3>Nb Enquêtes</h3>
-                        <div class="kpi-value" id="nbSurveys">-</div>
-                        <div class="kpi-detail" id="surveyDetail"></div>
-                    </div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-icon">✅</div>
-                    <div class="kpi-content">
-                        <h3>Taux Résolution</h3>
-                        <div class="kpi-value" id="resolutionRate">-</div>
-                        <div class="kpi-detail" id="resolutionDetail"></div>
-                    </div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-icon">📈</div>
-                    <div class="kpi-content">
-                        <h3>Évolution</h3>
-                        <div class="kpi-value" id="evolution">-</div>
-                        <div class="kpi-detail" id="evolutionDetail"></div>
-                    </div>
-                </div>
             </div>
-
-            <!-- Charts Grid -->
-            <div class="charts-grid">
-                <div class="chart-card">
-                    <h3>📈 Évolution du NPS</h3>
-                    <canvas id="npsEvolutionChart"></canvas>
-                </div>
-                <div class="chart-card">
-                    <h3>👥 NPS par Encadrant (Top/Bottom 10)</h3>
-                    <canvas id="npsByTLChart"></canvas>
-                </div>
-                <div class="chart-card">
-                    <h3>🎯 NPS par Compétence</h3>
-                    <canvas id="npsByCompetenceChart"></canvas>
-                </div>
-                <div class="chart-card">
-                    <h3>📊 Distribution des Scores</h3>
-                    <canvas id="scoreDistributionChart"></canvas>
-                </div>
-            </div>
-
-            <!-- Verbatim Analysis -->
-            <div class="analysis-card" id="analysisCard">
-                <h2>🤖 Analyse IA des Verbatims</h2>
-                <button id="analyzeBtn" class="btn-primary">Lancer l'analyse IA</button>
-                <div id="analysisResults" class="analysis-results" style="display: none;">
-                    <div class="analysis-section">
-                        <h3>🎯 Thèmes principaux</h3>
-                        <div id="themes"></div>
-                    </div>
-                    <div class="analysis-section">
-                        <h3>⚠️ Points faibles identifiés</h3>
-                        <div id="weaknesses"></div>
-                    </div>
-                    <div class="analysis-section">
-                        <h3>📋 Plan d'action 30/60/90 jours</h3>
-                        <div id="actionPlan"></div>
-                    </div>
-                    <div class="analysis-section">
-                        <h3>🏷️ Tags des verbatims</h3>
-                        <div id="tags"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Detailed Table -->
-            <div class="table-card">
-                <h2>📋 Détail par Agent</h2>
-                <div class="table-controls">
-                    <input type="text" id="tableSearch" placeholder="Rechercher dans la table..." class="table-search">
-                    <select id="tableSort" class="table-sort">
-                        <option value="nps-desc">NPS (décroissant)</option>
-                        <option value="nps-asc">NPS (croissant)</option>
-                        <option value="surveys-desc">Nb Enquêtes (décroissant)</option>
-                        <option value="agent-asc">Agent (A-Z)</option>
-                    </select>
-                </div>
-                <div class="table-wrapper">
-                    <table id="detailTable">
-                        <thead>
-                            <tr>
-                                <th>Log</th>
-                                <th>Agent</th>
-                                <th>Encadrant</th>
-                                <th>Compétence</th>
-                                <th>NPS</th>
-                                <th>Nb Enquêtes</th>
-                                <th>Taux Résolution</th>
-                                <th>Promoteurs</th>
-                                <th>Passifs</th>
-                                <th>Détracteurs</th>
-                                <th>Date Fin</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tableBody"></tbody>
-                    </table>
-                </div>
-            </div>
-
         </section>
 
         <!-- Loading Overlay -->
