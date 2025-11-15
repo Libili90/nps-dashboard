@@ -125,7 +125,63 @@ function processData() {
             document.getElementById('dataSection').style.display = 'block';
             
             // Initialiser les filtres
-            initializeFilters();
+            function initializeFilters() {
+    const encadrants = [...new Set(mergedData.map(d => d.encadrant))].filter(Boolean).sort();
+    const competences = [...new Set(mergedData.map(d => d.competence))].filter(Boolean).sort();
+    
+    // Populate TL checkboxes
+    const tlContainer = document.getElementById('filterTL');
+    tlContainer.innerHTML = '';
+    encadrants.forEach(tl => {
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = tl;
+        checkbox.className = 'tl-checkbox';
+        
+        // IMPORTANT: Ajouter l'event listener ICI
+        checkbox.addEventListener('change', applyFiltersAuto);
+        
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(' ' + tl));
+        tlContainer.appendChild(label);
+    });
+    
+    // Populate Competence checkboxes
+    const compContainer = document.getElementById('filterCompetence');
+    compContainer.innerHTML = '';
+    competences.forEach(comp => {
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = comp;
+        checkbox.className = 'comp-checkbox';
+        
+        // IMPORTANT: Ajouter l'event listener ICI
+        checkbox.addEventListener('change', applyFiltersAuto);
+        
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(' ' + comp));
+        compContainer.appendChild(label);
+    });
+    
+    // Auto-completion
+    setupAutocomplete('filterLog', 'logSuggestions', mergedData);
+    setupAutocomplete('filterAgent', 'agentSuggestions', mergedData);
+    
+    // Event listeners pour application automatique
+    document.getElementById('filterLog').addEventListener('input', applyFiltersAuto);
+    document.getElementById('filterAgent').addEventListener('input', applyFiltersAuto);
+    document.getElementById('filterDateType').addEventListener('change', function() {
+        const dateInput = document.getElementById('filterDate');
+        dateInput.style.display = (this.value === 'after' || this.value === 'before') ? 'block' : 'none';
+        applyFiltersAuto();
+    });
+    document.getElementById('filterDate').addEventListener('change', applyFiltersAuto);
+    document.getElementById('filterPeriod').addEventListener('change', applyFiltersAuto);
+    
+    document.getElementById('resetFilters').addEventListener('click', resetFilters);
+};
             
             // Afficher TOUTES les données par défaut
             filteredData = [...mergedData];
