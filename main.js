@@ -6,6 +6,38 @@ let npsData = [];
 let mergedData = [];
 let filteredData = [];
 let charts = {};
+const PASSWORD = "Laronste";
+
+// ========================================
+// MODAL & PASSWORD HANDLERS
+// ========================================
+document.getElementById('dataBtn').addEventListener('click', openModal);
+document.getElementById('closeModal').addEventListener('click', closeModal);
+document.getElementById('unlockBtn').addEventListener('click', checkPassword);
+document.getElementById('passwordInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        checkPassword();
+    }
+});
+
+function openModal() {
+    document.getElementById('uploadModal').style.display = 'flex';
+}
+
+function closeModal() {
+    document.getElementById('uploadModal').style.display = 'none';
+}
+
+function checkPassword() {
+    const input = document.getElementById('passwordInput').value;
+    if (input === PASSWORD) {
+        document.getElementById('passwordSection').style.display = 'none';
+        document.getElementById('uploadSection').style.display = 'block';
+    } else {
+        alert('❌ Mot de passe incorrect !');
+        document.getElementById('passwordInput').value = '';
+    }
+}
 
 // ========================================
 // FILE UPLOAD HANDLERS
@@ -79,18 +111,35 @@ function processData() {
             const compoMap = createCompoMap(compoData);
             mergedData = mergeNPSWithCompo(npsData, compoMap);
             
+            if (mergedData.length === 0) {
+                alert('❌ Aucune correspondance trouvée entre les fichiers. Vérifiez que les logs correspondent.');
+                showLoading(false);
+                return;
+            }
+            
+            // Fermer la modal
+            closeModal();
+            
+            // Afficher les données
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('dataSection').style.display = 'block';
+            
+            // Initialiser les filtres
             initializeFilters();
-            applyDefaultFilter();
             
-            document.getElementById('uploadSection').style.display = 'none';
-            document.getElementById('dashboardSection').style.display = 'block';
-            
+            // Afficher TOUTES les données par défaut
+            filteredData = [...mergedData];
             updateDashboard();
             
             showLoading(false);
+            
+            // Message de succès
+            showNotification(`✅ ${mergedData.length} enquêtes chargées avec succès !`);
+            
         } catch (error) {
             showLoading(false);
             alert('Erreur lors du traitement: ' + error.message);
+            console.error(error);
         }
     }, 500);
 }
@@ -122,16 +171,10 @@ function mergeNPSWithCompo(npsData, compoMap) {
     
     npsData.forEach(nps => {
         const logNPS = String(nps.ID_Agent || '').trim().substring(0, 10);
-        const compoInfo = compoMap.get(logNPS) || {
-            log: logNPS,
-            agent: 'Inconnu',
-            encadrant: 'Non renseigné',
-            competence: 'Non renseignée',
-            dateFin: '',
-            dateDebut: '',
-            media: '',
-            activite: ''
-        };
+        const compoInfo = compoMap.get(logNPS);
+        
+        // Si pas de correspondance, on ignore cette ligne
+        if (!compoInfo) return;
         
         const score = extractNPSScore(nps);
         if (score === null) return;
@@ -207,10 +250,9 @@ function getWeekNumber(date) {
 }
 
 // ========================================
-// FILTRES INTELLIGENTS AVEC AUTO-UPDATE
+// FILTRES
 // ========================================
 function initializeFilters() {
-    // Récupérer valeurs uniques
     const encadrants = [...new Set(mergedData.map(d => d.encadrant))].filter(Boolean).sort();
     const competences = [...new Set(mergedData.map(d => d.competence))].filter(Boolean).sort();
     
@@ -238,7 +280,7 @@ function initializeFilters() {
         compContainer.appendChild(label);
     });
     
-    // Auto-completion avec mise à jour automatique
+    // Auto-completion
     setupAutocomplete('filterLog', 'logSuggestions', mergedData);
     setupAutocomplete('filterAgent', 'agentSuggestions', mergedData);
     
@@ -258,7 +300,6 @@ function initializeFilters() {
         cb.addEventListener('change', applyFiltersAuto);
     });
     
-    document.getElementById('applyFilters').addEventListener('click', applyFiltersAuto);
     document.getElementById('resetFilters').addEventListener('click', resetFilters);
 }
 
@@ -291,7 +332,6 @@ function setupAutocomplete(inputId, suggestionsId, data) {
         }
         
         suggestions.innerHTML = matches.map(m => {
-            // Afficher log + agent
             const item = data.find(d => inputId === 'filterLog' ? d.log === m : d.agent === m);
             const displayText = inputId === 'filterLog' 
                 ? `${m} - ${item.agent}` 
@@ -301,39 +341,23 @@ function setupAutocomplete(inputId, suggestionsId, data) {
         
         suggestions.classList.add('active');
         
-        // Click sur suggestion
         suggestions.querySelectorAll('.suggestion-item').forEach(item => {
             item.addEventListener('click', function() {
                 const value = this.getAttribute('data-value');
                 input.value = value;
                 suggestions.classList.remove('active');
                 
-                // CONNEXION AUTOMATIQUE: Si log sélectionné, remplir les autres filtres
                 if (inputId === 'filterLog') {
                     const agentData = data.find(d => d.log === value);
                     if (agentData) {
                         document.getElementById('filterAgent').value = agentData.agent;
-                        // Cocher automatiquement TL et compétence
-                        document.querySelectorAll('.tl-checkbox').forEach(cb => {
-                            cb.checked = (cb.value === agentData.encadrant);
-                        });
-                        document.querySelectorAll('.comp-checkbox').forEach(cb => {
-                            cb.checked = (cb.value === agentData.competence);
-                        });
                     }
                 }
                 
-                // Si agent sélectionné, remplir log
                 if (inputId === 'filterAgent') {
                     const agentData = data.find(d => d.agent === value);
                     if (agentData) {
                         document.getElementById('filterLog').value = agentData.log;
-                        document.querySelectorAll('.tl-checkbox').forEach(cb => {
-                            cb.checked = (cb.value === agentData.encadrant);
-                        });
-                        document.querySelectorAll('.comp-checkbox').forEach(cb => {
-                            cb.checked = (cb.value === agentData.competence);
-                        });
                     }
                 }
                 
@@ -347,15 +371,6 @@ function setupAutocomplete(inputId, suggestionsId, data) {
             suggestions.classList.remove('active');
         }
     });
-}
-
-function applyDefaultFilter() {
-    // Par défaut: agents ACTIFS + mois en cours
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    document.getElementById('filterPeriod').value = currentMonth;
-    document.getElementById('filterDateType').value = 'active';
-    applyFiltersAuto();
 }
 
 function applyFiltersAuto() {
@@ -422,11 +437,13 @@ function resetFilters() {
     document.getElementById('filterAgent').value = '';
     document.querySelectorAll('.tl-checkbox').forEach(cb => cb.checked = false);
     document.querySelectorAll('.comp-checkbox').forEach(cb => cb.checked = false);
-    document.getElementById('filterDateType').value = 'active';
+    document.getElementById('filterDateType').value = 'all';
     document.getElementById('filterDate').style.display = 'none';
     document.getElementById('filterDate').value = '';
+    document.getElementById('filterPeriod').value = '';
     
-    applyDefaultFilter();
+    filteredData = [...mergedData];
+    updateDashboard();
 }
 
 // ========================================
@@ -445,11 +462,15 @@ function updateKPIs() {
     document.getElementById('npsGlobal').textContent = npsGlobal.toFixed(0);
     document.getElementById('npsGlobal').style.color = getNPSColor(npsGlobal);
     
-    const trendText = `${data.filter(d => d.score >= 9).length} promoteurs`;
+    const promoters = data.filter(d => d.score >= 9).length;
+    const passives = data.filter(d => d.score >= 7 && d.score <= 8).length;
+    const detractors = data.filter(d => d.score <= 6).length;
+    
+    const trendText = `${promoters} promoteurs`;
     document.getElementById('npsTrend').textContent = trendText;
     
     document.getElementById('nbSurveys').textContent = data.length;
-    const detailSurvey = `${data.filter(d => d.score >= 9).length} promoteurs, ${data.filter(d => d.score >= 7 && d.score <= 8).length} passifs, ${data.filter(d => d.score <= 6).length} détracteurs`;
+    const detailSurvey = `${promoters} promoteurs, ${passives} passifs, ${detractors} détracteurs`;
     document.getElementById('surveyDetail').textContent = detailSurvey;
     
     const resolved = data.filter(d => d.resolution === 'Oui').length;
@@ -471,9 +492,9 @@ function calculateNPS(data) {
 }
 
 function getNPSColor(nps) {
-    if (nps >= 50) return '#10b981';
-    if (nps >= 0) return '#f59e0b';
-    return '#ef4444';
+    if (nps >= 50) return '#00ff88';
+    if (nps >= 0) return '#ffd93d';
+    return '#ff2e63';
 }
 
 // ========================================
@@ -532,7 +553,17 @@ function createNPSEvolutionChart() {
                 legend: { display: false }
             },
             scales: {
-                y: { beginAtZero: false, min: -100, max: 100 }
+                y: { 
+                    beginAtZero: false, 
+                    min: -100, 
+                    max: 100,
+                    grid: { color: 'rgba(0, 242, 254, 0.1)' },
+                    ticks: { color: '#e0e7ff' }
+                },
+                x: {
+                    grid: { color: 'rgba(0, 242, 254, 0.1)' },
+                    ticks: { color: '#e0e7ff' }
+                }
             }
         }
     });
@@ -559,7 +590,7 @@ function createNPSByTLChart() {
         .filter(item => item.count >= 3)
         .sort((a, b) => b.nps - a.nps);
     
-    const topBottom = [...tlNPS.slice(0, 5), ...tlNPS.slice(-5)];
+    const topBottom = [...tlNPS.slice(0, 10)];
     
     const ctx = document.getElementById('npsByTLChart');
     charts.tl = new Chart(ctx, {
@@ -576,9 +607,21 @@ function createNPSByTLChart() {
             indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: true,
-            plugins: { legend: { display: false } },
+            plugins: { 
+                legend: { display: false }
+            },
             scales: {
-                x: { beginAtZero: false, min: -100, max: 100 }
+                x: { 
+                    beginAtZero: false, 
+                    min: -100, 
+                    max: 100,
+                    grid: { color: 'rgba(0, 242, 254, 0.1)' },
+                    ticks: { color: '#e0e7ff' }
+                },
+                y: {
+                    grid: { color: 'rgba(0, 242, 254, 0.1)' },
+                    ticks: { color: '#e0e7ff' }
+                }
             }
         }
     });
@@ -621,7 +664,17 @@ function createNPSByCompetenceChart() {
             maintainAspectRatio: true,
             plugins: { legend: { display: false } },
             scales: {
-                y: { beginAtZero: false, min: -100, max: 100 }
+                y: { 
+                    beginAtZero: false, 
+                    min: -100, 
+                    max: 100,
+                    grid: { color: 'rgba(0, 242, 254, 0.1)' },
+                    ticks: { color: '#e0e7ff' }
+                },
+                x: {
+                    grid: { color: 'rgba(0, 242, 254, 0.1)' },
+                    ticks: { color: '#e0e7ff' }
+                }
             }
         }
     });
@@ -644,16 +697,26 @@ function createScoreDistributionChart() {
                 label: 'Nombre de réponses',
                 data: distribution,
                 backgroundColor: distribution.map((_, i) => {
-                    if (i <= 6) return '#ef4444';
-                    if (i <= 8) return '#f59e0b';
-                    return '#10b981';
+                    if (i <= 6) return '#ff2e63';
+                    if (i <= 8) return '#ffd93d';
+                    return '#00ff88';
                 })
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: true,
-            plugins: { legend: { display: false } }
+            plugins: { legend: { display: false } },
+            scales: {
+                y: {
+                    grid: { color: 'rgba(0, 242, 254, 0.1)' },
+                    ticks: { color: '#e0e7ff' }
+                },
+                x: {
+                    grid: { color: 'rgba(0, 242, 254, 0.1)' },
+                    ticks: { color: '#e0e7ff' }
+                }
+            }
         }
     });
 }
@@ -710,13 +773,13 @@ function updateTable() {
             <td>${agent.agent}</td>
             <td>${agent.encadrant}</td>
             <td>${agent.competence}</td>
-            <td style="color: ${getNPSColor(agent.nps)}; font-weight: 600;">${agent.nps.toFixed(0)}</td>
+            <td style="color: ${getNPSColor(agent.nps)}; font-weight: 700; font-size: 1.1rem;">${agent.nps.toFixed(0)}</td>
             <td>${agent.nbSurveys}</td>
             <td>${agent.resolutionRate}%</td>
-            <td>${agent.promoters}</td>
-            <td>${agent.passives}</td>
-            <td>${agent.detractors}</td>
-            <td>${agent.dateFin || '-'}</td>
+            <td style="color: #00ff88;">${agent.promoters}</td>
+            <td style="color: #ffd93d;">${agent.passives}</td>
+            <td style="color: #ff2e63;">${agent.detractors}</td>
+            <td>${agent.dateFin || 'Actif'}</td>
         </tr>
     `).join('');
     
@@ -782,7 +845,7 @@ async function analyzeVerbatims() {
         : document.getElementById('geminiKey').value;
     
     if (!apiKey) {
-        alert('Veuillez entrer une clé API valide');
+        alert('⚠️ Veuillez entrer une clé API valide');
         return;
     }
     
@@ -792,10 +855,11 @@ async function analyzeVerbatims() {
         const verbatims = filteredData
             .filter(d => d.verbatim && d.verbatim.length > 10)
             .map(d => d.verbatim)
+            .slice(0, 100) // Limiter à 100 verbatims pour ne pas dépasser les quotas
             .join('\n---\n');
         
         if (!verbatims) {
-            alert('Aucun verbatim à analyser dans la sélection actuelle');
+            alert('❌ Aucun verbatim à analyser dans la sélection actuelle');
             showLoading(false);
             return;
         }
@@ -804,9 +868,12 @@ async function analyzeVerbatims() {
         displayAnalysis(analysis);
         
         showLoading(false);
+        showNotification('✅ Analyse IA terminée avec succès !');
+        
     } catch (error) {
         showLoading(false);
-        alert('Erreur lors de l\'analyse IA: ' + error.message);
+        alert('❌ Erreur lors de l\'analyse IA: ' + error.message);
+        console.error(error);
     }
 }
 
@@ -820,16 +887,16 @@ async function callAIAPI(provider, apiKey, verbatims) {
 Verbatims:
 ${verbatims}
 
-Réponds en JSON avec cette structure:
+Réponds UNIQUEMENT en JSON avec cette structure EXACTE:
 {
-  "themes": ["thème 1", "thème 2", ...],
-  "weaknesses": ["point faible 1", "point faible 2", ...],
+  "themes": ["thème 1", "thème 2", "thème 3", "thème 4", "thème 5"],
+  "weaknesses": ["point faible 1", "point faible 2", "point faible 3"],
   "actionPlan": {
-    "30days": {"actions": ["action 1", ...], "kpis": ["kpi 1", ...]},
-    "60days": {"actions": ["action 1", ...], "kpis": ["kpi 1", ...]},
-    "90days": {"actions": ["action 1", ...], "kpis": ["kpi 1", ...]}
+    "30days": {"actions": ["action 1", "action 2"], "kpis": ["kpi 1", "kpi 2"]},
+    "60days": {"actions": ["action 1", "action 2"], "kpis": ["kpi 1", "kpi 2"]},
+    "90days": {"actions": ["action 1", "action 2"], "kpis": ["kpi 1", "kpi 2"]}
   },
-  "tags": ["#tag1", "#tag2", ...]
+  "tags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"]
 }`;
 
     if (provider === 'openai') {
@@ -842,7 +909,7 @@ Réponds en JSON avec cette structure:
             body: JSON.stringify({
                 model: 'gpt-4o',
                 messages: [
-                    { role: 'system', content: 'Tu es un expert en analyse de feedback client et en expérience client.' },
+                    { role: 'system', content: 'Tu es un expert en analyse de feedback client. Tu réponds UNIQUEMENT en JSON valide, sans texte avant ou après.' },
                     { role: 'user', content: prompt }
                 ],
                 temperature: 0.7,
@@ -851,13 +918,23 @@ Réponds en JSON avec cette structure:
         });
         
         if (!response.ok) {
-            throw new Error(`Erreur API OpenAI: ${response.statusText}`);
+            const errorData = await response.json();
+            throw new Error(`Erreur API OpenAI: ${errorData.error?.message || response.statusText}`);
         }
         
         const data = await response.json();
         const content = data.choices[0].message.content;
         
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        // Nettoyer la réponse
+        let cleanContent = content.trim();
+        if (cleanContent.startsWith('```json')) {
+            cleanContent = cleanContent.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+        }
+        if (cleanContent.startsWith('```')) {
+            cleanContent = cleanContent.replace(/```\n?/g, '');
+        }
+        
+        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
             return JSON.parse(jsonMatch[0]);
         }
@@ -882,13 +959,23 @@ Réponds en JSON avec cette structure:
         });
         
         if (!response.ok) {
-            throw new Error(`Erreur API Gemini: ${response.statusText}`);
+            const errorData = await response.json();
+            throw new Error(`Erreur API Gemini: ${errorData.error?.message || response.statusText}`);
         }
         
         const data = await response.json();
         const content = data.candidates[0].content.parts[0].text;
         
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        // Nettoyer la réponse
+        let cleanContent = content.trim();
+        if (cleanContent.startsWith('```json')) {
+            cleanContent = cleanContent.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+        }
+        if (cleanContent.startsWith('```')) {
+            cleanContent = cleanContent.replace(/```\n?/g, '');
+        }
+        
+        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
             return JSON.parse(jsonMatch[0]);
         }
@@ -901,42 +988,63 @@ function displayAnalysis(analysis) {
     document.getElementById('analysisResults').style.display = 'block';
     
     const themesDiv = document.getElementById('themes');
-    themesDiv.innerHTML = '<ul>' + analysis.themes.map(t => `<li>${t}</li>`).join('') + '</ul>';
+    themesDiv.innerHTML = '<ul class="analysis-list">' + analysis.themes.map(t => `<li>✓ ${t}</li>`).join('') + '</ul>';
     
     const weaknessesDiv = document.getElementById('weaknesses');
-    weaknessesDiv.innerHTML = '<ul>' + analysis.weaknesses.map(w => `<li>${w}</li>`).join('') + '</ul>';
+    weaknessesDiv.innerHTML = '<ul class="analysis-list">' + analysis.weaknesses.map(w => `<li>⚠️ ${w}</li>`).join('') + '</ul>';
     
     const actionPlanDiv = document.getElementById('actionPlan');
     actionPlanDiv.innerHTML = `
-        <div style="margin-bottom: 20px;">
-            <h4 style="color: #00f2fe; margin-bottom: 10px;">📅 30 jours</h4>
-            <p style="font-weight: 600; margin-bottom: 5px;">Actions:</p>
-            <ul>${analysis.actionPlan['30days'].actions.map(a => `<li>${a}</li>`).join('')}</ul>
-            <p style="font-weight: 600; margin-top: 10px; margin-bottom: 5px;">KPIs:</p>
-            <ul>${analysis.actionPlan['30days'].kpis.map(k => `<li>${k}</li>`).join('')}</ul>
+        <div class="action-block">
+            <h4 style="color: #00f2fe; margin-bottom: 12px; font-size: 1.2rem;">📅 30 jours</h4>
+            <p style="font-weight: 600; margin-bottom: 8px; color: #e0e7ff;">Actions:</p>
+            <ul class="analysis-list">${analysis.actionPlan['30days'].actions.map(a => `<li>→ ${a}</li>`).join('')}</ul>
+            <p style="font-weight: 600; margin-top: 12px; margin-bottom: 8px; color: #e0e7ff;">KPIs:</p>
+            <ul class="analysis-list">${analysis.actionPlan['30days'].kpis.map(k => `<li>📊 ${k}</li>`).join('')}</ul>
         </div>
-        <div style="margin-bottom: 20px;">
-            <h4 style="color: #00f2fe; margin-bottom: 10px;">📅 60 jours</h4>
-            <p style="font-weight: 600; margin-bottom: 5px;">Actions:</p>
-            <ul>${analysis.actionPlan['60days'].actions.map(a => `<li>${a}</li>`).join('')}</ul>
-            <p style="font-weight: 600; margin-top: 10px; margin-bottom: 5px;">KPIs:</p>
-            <ul>${analysis.actionPlan['60days'].kpis.map(k => `<li>${k}</li>`).join('')}</ul>
+        <div class="action-block">
+            <h4 style="color: #00f2fe; margin-bottom: 12px; font-size: 1.2rem;">📅 60 jours</h4>
+            <p style="font-weight: 600; margin-bottom: 8px; color: #e0e7ff;">Actions:</p>
+            <ul class="analysis-list">${analysis.actionPlan['60days'].actions.map(a => `<li>→ ${a}</li>`).join('')}</ul>
+            <p style="font-weight: 600; margin-top: 12px; margin-bottom: 8px; color: #e0e7ff;">KPIs:</p>
+            <ul class="analysis-list">${analysis.actionPlan['60days'].kpis.map(k => `<li>📊 ${k}</li>`).join('')}</ul>
         </div>
-        <div style="margin-bottom: 20px;">
-            <h4 style="color: #00f2fe; margin-bottom: 10px;">📅 90 jours</h4>
-            <p style="font-weight: 600; margin-bottom: 5px;">Actions:</p>
-            <ul>${analysis.actionPlan['90days'].actions.map(a => `<li>${a}</li>`).join('')}</ul>
-            <p style="font-weight: 600; margin-top: 10px; margin-bottom: 5px;">KPIs:</p>
-            <ul>${analysis.actionPlan['90days'].kpis.map(k => `<li>${k}</li>`).join('')}</ul>
+        <div class="action-block">
+            <h4 style="color: #00f2fe; margin-bottom: 12px; font-size: 1.2rem;">📅 90 jours</h4>
+            <p style="font-weight: 600; margin-bottom: 8px; color: #e0e7ff;">Actions:</p>
+            <ul class="analysis-list">${analysis.actionPlan['90days'].actions.map(a => `<li>→ ${a}</li>`).join('')}</ul>
+            <p style="font-weight: 600; margin-top: 12px; margin-bottom: 8px; color: #e0e7ff;">KPIs:</p>
+            <ul class="analysis-list">${analysis.actionPlan['90days'].kpis.map(k => `<li>📊 ${k}</li>`).join('')}</ul>
         </div>
     `;
     
     const tagsDiv = document.getElementById('tags');
     tagsDiv.innerHTML = analysis.tags.map(tag => 
-        `<span style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 8px 16px; border-radius: 25px; margin: 5px; font-size: 0.9rem; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);">${tag}</span>`
+        `<span class="tag-badge">${tag}</span>`
     ).join('');
 }
 
+// ========================================
+// UTILITIES
+// ========================================
 function showLoading(show) {
     document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
+}
+
+function showNotification(message) {
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.classList.add('show');
+    }, 100);
+    
+    setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            notification.remove();
+        }, 300);
+    }, 3000);
 }
