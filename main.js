@@ -1,5 +1,5 @@
 // ========================================
-// GLOBAL STATE
+// GLOBAL STATE (SANS LOCALSTORAGE)
 // ========================================
 let compoData = [];
 let npsData = [];
@@ -7,61 +7,6 @@ let mergedData = [];
 let filteredData = [];
 let charts = {};
 const PASSWORD = "Laronste";
-
-// Clé pour le stockage local
-const STORAGE_KEY_COMPO = 'nps_dashboard_compo';
-const STORAGE_KEY_NPS = 'nps_dashboard_nps';
-
-// ========================================
-// INITIALISATION AU CHARGEMENT
-// ========================================
-window.addEventListener('DOMContentLoaded', function() {
-    loadStoredData();
-});
-
-function loadStoredData() {
-    try {
-        const storedCompo = localStorage.getItem(STORAGE_KEY_COMPO);
-        const storedNPS = localStorage.getItem(STORAGE_KEY_NPS);
-        
-        if (storedCompo && storedNPS) {
-            compoData = JSON.parse(storedCompo);
-            npsData = JSON.parse(storedNPS);
-            
-            // Traiter automatiquement
-            processStoredData();
-        }
-    } catch (error) {
-        console.log('Pas de données stockées ou erreur:', error);
-    }
-}
-
-function processStoredData() {
-    showLoading(true);
-    
-    setTimeout(() => {
-        try {
-            const compoMap = createCompoMap(compoData);
-            mergedData = mergeNPSWithCompo(npsData, compoMap);
-            
-            if (mergedData.length > 0) {
-                document.getElementById('emptyState').style.display = 'none';
-                document.getElementById('dataSection').style.display = 'block';
-                
-                initializeFilters();
-                filteredData = [...mergedData];
-                updateDashboard();
-                
-                showNotification(`✅ ${mergedData.length} enquêtes chargées depuis le stockage`);
-            }
-            
-            showLoading(false);
-        } catch (error) {
-            showLoading(false);
-            console.error('Erreur traitement:', error);
-        }
-    }, 500);
-}
 
 // ========================================
 // MODAL & PASSWORD HANDLERS
@@ -81,7 +26,6 @@ function openModal() {
 
 function closeModal() {
     document.getElementById('uploadModal').style.display = 'none';
-    // Reset password
     document.getElementById('passwordInput').value = '';
 }
 
@@ -97,7 +41,7 @@ function checkPassword() {
 }
 
 // ========================================
-// FILE UPLOAD HANDLERS (Indépendants)
+// FILE UPLOAD HANDLERS (SANS STOCKAGE)
 // ========================================
 document.getElementById('compoFile').addEventListener('change', handleCompoUpload);
 document.getElementById('npsFile').addEventListener('change', handleNPSUpload);
@@ -107,6 +51,7 @@ function handleCompoUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
     
+    showLoading(true);
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
@@ -115,15 +60,14 @@ function handleCompoUpload(e) {
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
             compoData = XLSX.utils.sheet_to_json(worksheet);
             
-            // Stocker dans localStorage
-            localStorage.setItem(STORAGE_KEY_COMPO, JSON.stringify(compoData));
-            
             document.getElementById('compoStatus').textContent = 
-                `✅ ${compoData.length} lignes chargées et stockées`;
+                `✅ ${compoData.length} lignes chargées`;
             document.getElementById('compoStatus').className = 'file-status success';
             
             checkFilesReady();
+            showLoading(false);
         } catch (error) {
+            showLoading(false);
             alert('Erreur lors de la lecture du fichier Compo: ' + error.message);
         }
     };
@@ -134,6 +78,7 @@ function handleNPSUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
     
+    showLoading(true);
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
@@ -142,15 +87,14 @@ function handleNPSUpload(e) {
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
             npsData = XLSX.utils.sheet_to_json(worksheet);
             
-            // Stocker dans localStorage
-            localStorage.setItem(STORAGE_KEY_NPS, JSON.stringify(npsData));
-            
             document.getElementById('npsStatus').textContent = 
-                `✅ ${npsData.length} lignes chargées et stockées`;
+                `✅ ${npsData.length} lignes chargées`;
             document.getElementById('npsStatus').className = 'file-status success';
             
             checkFilesReady();
+            showLoading(false);
         } catch (error) {
+            showLoading(false);
             alert('Erreur lors de la lecture du fichier NPS: ' + error.message);
         }
     };
@@ -180,6 +124,10 @@ function processData() {
                 return;
             }
             
+            // DEBUG: Afficher le nombre de verbatims
+            const verbatimsCount = mergedData.filter(d => d.verbatim && d.verbatim.trim().length > 10).length;
+            console.log(`Total enquêtes: ${mergedData.length}, Verbatims valides: ${verbatimsCount}`);
+            
             closeModal();
             
             document.getElementById('emptyState').style.display = 'none';
@@ -190,7 +138,7 @@ function processData() {
             updateDashboard();
             
             showLoading(false);
-            showNotification(`✅ ${mergedData.length} enquêtes chargées avec succès !`);
+            showNotification(`✅ ${mergedData.length} enquêtes chargées (${verbatimsCount} verbatims)`);
             
         } catch (error) {
             showLoading(false);
@@ -234,7 +182,37 @@ function mergeNPSWithCompo(npsData, compoMap) {
         const score = extractNPSScore(nps);
         if (score === null) return;
         
-        const verbatim = String(nps['QID3'] || '').trim();
+        // CORRECTION VERBATIM: Chercher dans toutes les colonnes possibles
+        let verbatim = '';
+        
+        // Liste des colonnes possibles pour le verbatim
+        const verbatimColumns = [
+            'QID3',
+            'QID3 - À vos claviers ! Pouvez-vous commenter cette note en quelques mots ?',
+            'Verbatim',
+            'Commentaire',
+            'À vos claviers ! Pouvez-vous commenter cette note en quelques mots ?'
+        ];
+        
+        // Chercher dans toutes les colonnes
+        for (const col of verbatimColumns) {
+            if (nps[col] && String(nps[col]).trim().length > 0) {
+                verbatim = String(nps[col]).trim();
+                break;
+            }
+        }
+        
+        // Si toujours vide, chercher dans TOUTES les colonnes qui contiennent du texte
+        if (!verbatim) {
+            for (const key in nps) {
+                const value = String(nps[key] || '').trim();
+                if (value.length > 20 && value.length < 500 && !key.includes('Date') && !key.includes('ID')) {
+                    verbatim = value;
+                    break;
+                }
+            }
+        }
+        
         const resolution = extractResolution(nps);
         const date = parseDate(nps["Date d'appel"]);
         
@@ -258,7 +236,10 @@ function mergeNPSWithCompo(npsData, compoMap) {
 function extractNPSScore(nps) {
     const scoreKeys = [
         'QID2 - Vous avez eu un échange [type_event_libelle] avec le Service Client [marque...',
-        '(Group) QID2_NPS_GROUP - Vous avez eu un échange [type_event_libelle] avec le Service Client [marque...'
+        '(Group) QID2_NPS_GROUP - Vous avez eu un échange [type_event_libelle] avec le Service Client [marque...',
+        'QID2',
+        'Score',
+        'NPS'
     ];
     
     for (const key of scoreKeys) {
@@ -306,13 +287,12 @@ function getWeekNumber(date) {
 }
 
 // ========================================
-// FILTRES AVEC AUTO-COMPLETION
+// FILTRES
 // ========================================
 function initializeFilters() {
     const encadrants = [...new Set(mergedData.map(d => d.encadrant))].filter(Boolean).sort();
     const competences = [...new Set(mergedData.map(d => d.competence))].filter(Boolean).sort();
     
-    // Populate TL checkboxes avec event listeners
     const tlContainer = document.getElementById('filterTL');
     tlContainer.innerHTML = '';
     encadrants.forEach(tl => {
@@ -328,7 +308,6 @@ function initializeFilters() {
         tlContainer.appendChild(label);
     });
     
-    // Populate Competence checkboxes avec event listeners
     const compContainer = document.getElementById('filterCompetence');
     compContainer.innerHTML = '';
     competences.forEach(comp => {
@@ -344,11 +323,9 @@ function initializeFilters() {
         compContainer.appendChild(label);
     });
     
-    // Auto-completion
     setupAutocomplete('filterLog', 'logSuggestions', mergedData);
     setupAutocomplete('filterAgent', 'agentSuggestions', mergedData);
     
-    // Event listeners
     document.getElementById('filterLog').addEventListener('input', applyFiltersAuto);
     document.getElementById('filterAgent').addEventListener('input', applyFiltersAuto);
     document.getElementById('filterDateType').addEventListener('change', function() {
@@ -361,7 +338,6 @@ function initializeFilters() {
     
     document.getElementById('resetFilters').addEventListener('click', resetFilters);
     
-    // Ajouter les sélecteurs de période pour les graphiques
     addChartPeriodSelectors();
 }
 
@@ -501,6 +477,7 @@ function resetFilters() {
     filteredData = [...mergedData];
     updateDashboard();
 }
+
 // ========================================
 // DASHBOARD UPDATE
 // ========================================
@@ -555,25 +532,23 @@ function getNPSColor(nps) {
 // ========================================
 // SÉLECTEURS DE PÉRIODE POUR GRAPHIQUES
 // ========================================
-let currentChartPeriod = 'month'; // 'day', 'week', 'month'
+let currentChartPeriod = 'month';
 
 function addChartPeriodSelectors() {
-    // Ajouter les boutons de sélection de période
     const evolutionCard = document.querySelector('.chart-card');
     if (evolutionCard && !document.getElementById('periodSelector')) {
         const selector = document.createElement('div');
         selector.id = 'periodSelector';
         selector.className = 'period-selector';
         selector.innerHTML = `
-            <button class="period-btn active" data-period="day">Jour</button>
+            <button class="period-btn" data-period="day">Jour</button>
             <button class="period-btn" data-period="week">Semaine</button>
-            <button class="period-btn" data-period="month">Mois</button>
+            <button class="period-btn active" data-period="month">Mois</button>
         `;
         
         const h3 = evolutionCard.querySelector('h3');
         h3.appendChild(selector);
         
-        // Event listeners
         selector.querySelectorAll('.period-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 selector.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
@@ -586,7 +561,7 @@ function addChartPeriodSelectors() {
 }
 
 // ========================================
-// CHARTS AVEC SÉLECTION DE PÉRIODE
+// CHARTS
 // ========================================
 function updateCharts() {
     destroyCharts();
@@ -882,7 +857,6 @@ function updateTable() {
         </tr>
     `).join('');
     
-    // Table search
     const searchInput = document.getElementById('tableSearch');
     searchInput.removeEventListener('input', tableSearchHandler);
     searchInput.addEventListener('input', tableSearchHandler);
@@ -938,7 +912,7 @@ function exportToCSV() {
 }
 
 // ========================================
-// AI ANALYSIS (CORRIGÉ)
+// AI ANALYSIS (CORRIGÉ AVEC DEBUG)
 // ========================================
 document.getElementById('analyzeBtn').addEventListener('click', analyzeVerbatims);
 
@@ -953,15 +927,30 @@ async function analyzeVerbatims() {
         return;
     }
     
-    // CORRECTION: Extraire les verbatims avec vérification
-    const verbatimsData = filteredData
-        .filter(d => d.verbatim && d.verbatim.trim().length > 10)
-        .slice(0, 100); // Limiter à 100
+    // DEBUG: Afficher les verbatims dans la console
+    console.log('=== DEBUG VERBATIMS ===');
+    console.log('Nombre total de lignes filtrées:', filteredData.length);
     
-    console.log(`Nombre de verbatims trouvés: ${verbatimsData.length}`);
+    // Afficher les 5 premières lignes pour debug
+    console.log('Échantillon des 5 premières lignes:');
+    filteredData.slice(0, 5).forEach((d, i) => {
+        console.log(`Ligne ${i + 1}:`, {
+            log: d.log,
+            verbatim: d.verbatim,
+            verbatimLength: d.verbatim ? d.verbatim.length : 0
+        });
+    });
+    
+    // Extraire les verbatims valides
+    const verbatimsData = filteredData.filter(d => {
+        const hasVerbatim = d.verbatim && d.verbatim.trim().length > 10;
+        return hasVerbatim;
+    }).slice(0, 100);
+    
+    console.log(`Verbatims valides trouvés: ${verbatimsData.length}`);
     
     if (verbatimsData.length === 0) {
-        alert('❌ Aucun verbatim trouvé dans les données filtrées. Vérifiez que la colonne QID3 contient des commentaires.');
+        alert(`❌ Aucun verbatim trouvé dans les ${filteredData.length} lignes filtrées.\n\nVérifiez:\n1. Que la colonne QID3 contient des commentaires\n2. Que les commentaires font plus de 10 caractères\n3. Consultez la console (F12) pour voir les données détectées`);
         return;
     }
     
@@ -979,7 +968,7 @@ async function analyzeVerbatims() {
     } catch (error) {
         showLoading(false);
         alert('❌ Erreur lors de l\'analyse IA: ' + error.message);
-        console.error(error);
+        console.error('Erreur complète:', error);
     }
 }
 
