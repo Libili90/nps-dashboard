@@ -1,477 +1,237 @@
-// ============================================
-// SECTION 5: MISE À JOUR DU DASHBOARD
-// ============================================
-
-function updateDashboard() {
-    calculateKPIs();
-    updateCharts();
-    updateTable();
-    updateSummary();
-}
-
-function calculateKPIs() {
-    const data = filteredData.slice(-periodRange);
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Financier Professionnel</title>
     
-    if (data.length === 0) return;
-
-    // Revenus totaux
-    const totalRevenue = data.reduce((sum, item) => sum + item.revenue, 0);
-    document.getElementById('total-revenue').textContent = formatCurrency(totalRevenue);
-
-    // Coûts totaux
-    const totalCosts = data.reduce((sum, item) => sum + item.costs, 0);
-    document.getElementById('total-costs').textContent = formatCurrency(totalCosts);
-
-    // Profit total
-    const totalProfit = totalRevenue - totalCosts;
-    document.getElementById('total-profit').textContent = formatCurrency(totalProfit);
-
-    // Marge moyenne
-    const avgMargin = (totalProfit / totalRevenue) * 100;
-    document.getElementById('avg-margin').textContent = avgMargin.toFixed(1) + '%';
-
-    // Tendances (comparaison avec période précédente)
-    calculateTrends(data);
-}
-
-function calculateTrends(currentData) {
-    const previousData = filteredData.slice(-periodRange * 2, -periodRange);
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
     
-    if (previousData.length === 0) return;
-
-    const currentRevenue = currentData.reduce((sum, item) => sum + item.revenue, 0);
-    const previousRevenue = previousData.reduce((sum, item) => sum + item.revenue, 0);
+    <!-- SheetJS pour export XLSX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
-    const revenueTrend = ((currentRevenue - previousRevenue) / previousRevenue) * 100;
-    updateTrendIndicator('revenue-trend', revenueTrend);
-
-    const currentCosts = currentData.reduce((sum, item) => sum + item.costs, 0);
-    const previousCosts = previousData.reduce((sum, item) => sum + item.costs, 0);
+    <!-- Font Awesome pour les icônes -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    const costsTrend = ((currentCosts - previousCosts) / previousCosts) * 100;
-    updateTrendIndicator('costs-trend', costsTrend);
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Overlay pour le mode sombre -->
+    <div class="theme-toggle">
+        <button id="theme-btn" title="Changer de thème">
+            <i class="fas fa-moon"></i>
+        </button>
+    </div>
 
-    const currentProfit = currentRevenue - currentCosts;
-    const previousProfit = previousRevenue - previousCosts;
-    
-    const profitTrend = ((currentProfit - previousProfit) / previousProfit) * 100;
-    updateTrendIndicator('profit-trend', profitTrend);
-}
+    <div class="container">
+        <!-- HEADER -->
+        <header class="dashboard-header">
+            <div class="header-content">
+                <div class="header-left">
+                    <h1><i class="fas fa-chart-line"></i> Dashboard Financier</h1>
+                    <p class="subtitle">Analyse en temps réel de vos performances</p>
+                </div>
+                <div class="header-right">
+                    <div class="last-update">
+                        <i class="fas fa-clock"></i>
+                        <span id="last-update">Mise à jour: --</span>
+                    </div>
+                </div>
+            </div>
+        </header>
 
-function updateTrendIndicator(elementId, trend) {
-    const element = document.getElementById(elementId);
-    if (!element) return;
+        <!-- CONTRÔLES -->
+        <section class="controls">
+            <div class="controls-grid">
+                <div class="control-group">
+                    <label for="file-upload">
+                        <i class="fas fa-upload"></i> Charger les données
+                    </label>
+                    <input type="file" id="file-upload" accept=".csv,.xlsx,.xls" multiple>
+                    <small class="help-text">Formats supportés: CSV, XLSX, XLS</small>
+                </div>
 
-    element.textContent = (trend >= 0 ? '+' : '') + trend.toFixed(1) + '%';
-    element.className = 'trend ' + (trend >= 0 ? 'positive' : 'negative');
-}
+                <div class="control-group">
+                    <label for="period-select">
+                        <i class="fas fa-calendar-alt"></i> Période d'analyse
+                    </label>
+                    <select id="period-select">
+                        <option value="7">7 derniers jours</option>
+                        <option value="14">14 derniers jours</option>
+                        <option value="30" selected>30 derniers jours</option>
+                        <option value="60">60 derniers jours</option>
+                        <option value="90">90 derniers jours</option>
+                        <option value="-1">Tout</option>
+                    </select>
+                </div>
 
-// ============================================
-// SECTION 6: GRAPHIQUES (Chart.js)
-// ============================================
+                <div class="control-group">
+                    <label for="category-filter">
+                        <i class="fas fa-filter"></i> Filtrer par catégorie
+                    </label>
+                    <select id="category-filter">
+                        <option value="">Toutes les catégories</option>
+                    </select>
+                </div>
 
-let revenueChart, profitChart, categoryChart;
+                <div class="control-group">
+                    <label>&nbsp;</label>
+                    <button id="export-btn" class="btn-primary">
+                        <i class="fas fa-file-excel"></i> Exporter XLSX
+                    </button>
+                </div>
+            </div>
+        </section>
 
-function updateCharts() {
-    updateRevenueChart();
-    updateProfitChart();
-    updateCategoryChart();
-}
-
-function updateRevenueChart() {
-    const data = filteredData.slice(-periodRange);
-    
-    const ctx = document.getElementById('revenue-chart').getContext('2d');
-    
-    if (revenueChart) {
-        revenueChart.destroy();
-    }
-
-    revenueChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: data.map(item => item.date),
-            datasets: [{
-                label: 'Revenus',
-                data: data.map(item => item.revenue),
-                borderColor: '#3b82f6',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                tension: 0.4,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return formatCurrency(context.parsed.y);
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: function(value) {
-                            return formatCurrency(value);
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-function updateProfitChart() {
-    const data = filteredData.slice(-periodRange);
-    
-    const ctx = document.getElementById('profit-chart').getContext('2d');
-    
-    if (profitChart) {
-        profitChart.destroy();
-    }
-
-    profitChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: data.map(item => item.date),
-            datasets: [{
-                label: 'Profit',
-                data: data.map(item => item.revenue - item.costs),
-                backgroundColor: data.map(item => 
-                    item.revenue - item.costs >= 0 ? '#10b981' : '#ef4444'
-                )
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return formatCurrency(context.parsed.y);
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: function(value) {
-                            return formatCurrency(value);
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-function updateCategoryChart() {
-    const categoryData = {};
-    
-    filteredData.slice(-periodRange).forEach(item => {
-        if (!categoryData[item.category]) {
-            categoryData[item.category] = 0;
-        }
-        categoryData[item.category] += item.revenue;
-    });
-
-    const ctx = document.getElementById('category-chart').getContext('2d');
-    
-    if (categoryChart) {
-        categoryChart.destroy();
-    }
-
-    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-
-    categoryChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: Object.keys(categoryData),
-            datasets: [{
-                data: Object.values(categoryData),
-                backgroundColor: colors
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                            const percentage = ((context.parsed / total) * 100).toFixed(1);
-                            return context.label + ': ' + formatCurrency(context.parsed) + ' (' + percentage + '%)';
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-// ============================================
-// SECTION 7: TABLEAU DE DONNÉES
-// ============================================
-
-function updateTable() {
-    const tbody = document.getElementById('data-table-body');
-    tbody.innerHTML = '';
-
-    const data = filteredData.slice(-50); // Dernières 50 entrées
-
-    data.forEach(item => {
-        const row = document.createElement('tr');
-        const profit = item.revenue - item.costs;
-        const margin = (profit / item.revenue) * 100;
-
-        row.innerHTML = `
-            <td>${item.date}</td>
-            <td>${item.category}</td>
-            <td>${formatCurrency(item.revenue)}</td>
-            <td>${formatCurrency(item.costs)}</td>
-            <td class="${profit >= 0 ? 'positive' : 'negative'}">${formatCurrency(profit)}</td>
-            <td>${margin.toFixed(1)}%</td>
-        `;
-
-        tbody.appendChild(row);
-    });
-}
-
-function updateSummary() {
-    const summaryDiv = document.getElementById('ai-summary');
-    summaryDiv.innerHTML = '<p class="loading">Génération du résumé...</p>';
-    
-    setTimeout(() => {
-        const summary = generateAISummary();
-        summaryDiv.innerHTML = summary;
-    }, 500);
-}
-
-// ============================================
-// SECTION 8: IA LOCALE (Sans API)
-// ============================================
-
-function generateAISummary() {
-    const data = filteredData.slice(-periodRange);
-    
-    if (data.length === 0) {
-        return '<p>Aucune donnée disponible pour l\'analyse.</p>';
-    }
-
-    // Calculs statistiques
-    const totalRevenue = data.reduce((sum, item) => sum + item.revenue, 0);
-    const totalCosts = data.reduce((sum, item) => sum + item.costs, 0);
-    const totalProfit = totalRevenue - totalCosts;
-    const avgMargin = (totalProfit / totalRevenue) * 100;
-
-    // Meilleure et pire journée
-    const profits = data.map(item => ({
-        date: item.date,
-        profit: item.revenue - item.costs
-    }));
-    
-    const bestDay = profits.reduce((max, item) => item.profit > max.profit ? item : max);
-    const worstDay = profits.reduce((min, item) => item.profit < min.profit ? item : min);
-
-    // Tendance
-    const recentData = data.slice(-7);
-    const olderData = data.slice(-14, -7);
-    
-    const recentAvg = recentData.reduce((sum, item) => sum + item.revenue, 0) / recentData.length;
-    const olderAvg = olderData.reduce((sum, item) => sum + item.revenue, 0) / olderData.length;
-    
-    const trend = recentAvg > olderAvg ? 'hausse' : 'baisse';
-    const trendPercent = Math.abs(((recentAvg - olderAvg) / olderAvg) * 100).toFixed(1);
-
-    // Catégorie dominante
-    const categoryRevenue = {};
-    data.forEach(item => {
-        categoryRevenue[item.category] = (categoryRevenue[item.category] || 0) + item.revenue;
-    });
-    
-    const topCategory = Object.entries(categoryRevenue)
-        .sort((a, b) => b[1] - a[1])[0];
-
-    // Génération du résumé HTML
-    return `
-        <div class="ai-summary-content">
-            <h3>📊 Analyse Intelligente</h3>
-            
-            <div class="summary-section">
-                <h4>Performance Globale</h4>
-                <p>Sur la période analysée, votre activité a généré <strong>${formatCurrency(totalRevenue)}</strong> 
-                de revenus pour <strong>${formatCurrency(totalCosts)}</strong> de coûts, 
-                résultant en un profit de <strong>${formatCurrency(totalProfit)}</strong> 
-                (marge: <strong>${avgMargin.toFixed(1)}%</strong>).</p>
+        <!-- KPIs -->
+        <section class="kpis">
+            <div class="kpi-card revenue">
+                <div class="kpi-icon">
+                    <i class="fas fa-dollar-sign"></i>
+                </div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Revenus Totaux</div>
+                    <div class="kpi-value" id="total-revenue">0 €</div>
+                    <div class="kpi-trend" id="revenue-trend">--</div>
+                </div>
             </div>
 
-            <div class="summary-section">
-                <h4>Tendance</h4>
-                <p>Les revenus sont en <strong>${trend}</strong> de <strong>${trendPercent}%</strong> 
-                par rapport à la période précédente.</p>
+            <div class="kpi-card costs">
+                <div class="kpi-icon">
+                    <i class="fas fa-receipt"></i>
+                </div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Coûts Totaux</div>
+                    <div class="kpi-value" id="total-costs">0 €</div>
+                    <div class="kpi-trend" id="costs-trend">--</div>
+                </div>
             </div>
 
-            <div class="summary-section">
-                <h4>Points Clés</h4>
-                <ul>
-                    <li><strong>Meilleure journée:</strong> ${bestDay.date} (${formatCurrency(bestDay.profit)})</li>
-                    <li><strong>Journée la plus difficile:</strong> ${worstDay.date} (${formatCurrency(worstDay.profit)})</li>
-                    <li><strong>Catégorie dominante:</strong> ${topCategory[0]} (${formatCurrency(topCategory[1])})</li>
-                </ul>
+            <div class="kpi-card profit">
+                <div class="kpi-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Profit Total</div>
+                    <div class="kpi-value" id="total-profit">0 €</div>
+                    <div class="kpi-trend" id="profit-trend">--</div>
+                </div>
             </div>
 
-            <div class="summary-section">
-                <h4>💡 Recommandations</h4>
-                ${generateRecommendations(avgMargin, trend, data)}
+            <div class="kpi-card margin">
+                <div class="kpi-icon">
+                    <i class="fas fa-percentage"></i>
+                </div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Marge Moyenne</div>
+                    <div class="kpi-value" id="avg-margin">0%</div>
+                    <div class="kpi-info">Sur la période sélectionnée</div>
+                </div>
             </div>
+        </section>
+
+        <!-- GRAPHIQUES -->
+        <section class="charts">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3><i class="fas fa-line-chart"></i> Évolution des Revenus</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="revenue-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3><i class="fas fa-bar-chart"></i> Analyse des Profits</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="profit-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3><i class="fas fa-pie-chart"></i> Répartition par Catégorie</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="category-chart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- IA SUMMARY -->
+        <section class="ai-section">
+            <div class="ai-card">
+                <div class="ai-header">
+                    <h3><i class="fas fa-brain"></i> Analyse Intelligente IA</h3>
+                    <span class="ai-badge">Local AI</span>
+                </div>
+                <div id="ai-summary" class="ai-content">
+                    <p class="placeholder">Chargez des données pour obtenir une analyse intelligente...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- TABLEAU -->
+        <section class="table-section">
+            <div class="table-card">
+                <div class="table-header">
+                    <h3><i class="fas fa-table"></i> Données Détaillées</h3>
+                    <div class="table-info">
+                        <span id="table-count">0 entrées</span>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Catégorie</th>
+                                <th>Revenus</th>
+                                <th>Coûts</th>
+                                <th>Profit</th>
+                                <th>Marge</th>
+                            </tr>
+                        </thead>
+                        <tbody id="data-table-body">
+                            <tr>
+                                <td colspan="6" class="no-data">
+                                    <i class="fas fa-inbox"></i>
+                                    <p>Aucune donnée disponible</p>
+                                    <small>Chargez un fichier CSV ou XLSX pour commencer</small>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- FOOTER -->
+        <footer class="dashboard-footer">
+            <div class="footer-content">
+                <div class="footer-left">
+                    <p>&copy; 2024 Dashboard Financier Pro</p>
+                </div>
+                <div class="footer-right">
+                    <a href="#" class="footer-link"><i class="fas fa-question-circle"></i> Aide</a>
+                    <a href="#" class="footer-link"><i class="fas fa-cog"></i> Paramètres</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loading-spinner" class="spinner-overlay" style="display: none;">
+        <div class="spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Chargement des données...</p>
         </div>
-    `;
-}
+    </div>
 
-function generateRecommendations(margin, trend, data) {
-    const recommendations = [];
-
-    if (margin < 20) {
-        recommendations.push('<li>⚠️ Votre marge est faible. Envisagez d\'optimiser vos coûts ou d\'augmenter vos prix.</li>');
-    } else if (margin > 40) {
-        recommendations.push('<li>✅ Excellente marge ! Maintenez cette performance.</li>');
-    }
-
-    if (trend === 'baisse') {
-        recommendations.push('<li>📉 Attention à la tendance baissière. Analysez les causes et ajustez votre stratégie.</li>');
-    } else {
-        recommendations.push('<li>📈 Bonne dynamique de croissance. Capitalisez sur cette tendance.</li>');
-    }
-
-    // Analyse de la volatilité
-    const revenues = data.map(item => item.revenue);
-    const avg = revenues.reduce((a, b) => a + b, 0) / revenues.length;
-    const variance = revenues.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / revenues.length;
-    const stdDev = Math.sqrt(variance);
-    const volatility = (stdDev / avg) * 100;
-
-    if (volatility > 30) {
-        recommendations.push('<li>⚡ Forte volatilité détectée. Travaillez sur la stabilisation de vos revenus.</li>');
-    }
-
-    return '<ul>' + recommendations.join('') + '</ul>';
-}
-
-// ============================================
-// SECTION 9: EXPORT XLSX
-// ============================================
-
-async function exportData() {
-    try {
-        // Créer un nouveau workbook
-        const wb = XLSX.utils.book_new();
-        
-        // Préparer les données pour l'export
-        const exportData = filteredData.map(item => ({
-            'Date': item.date,
-            'Catégorie': item.category,
-            'Revenus': item.revenue,
-            'Coûts': item.costs,
-            'Profit': item.revenue - item.costs,
-            'Marge (%)': (((item.revenue - item.costs) / item.revenue) * 100).toFixed(2)
-        }));
-
-        // Créer la feuille de données
-        const ws = XLSX.utils.json_to_sheet(exportData);
-
-        // Ajouter des styles (largeurs de colonnes)
-        ws['!cols'] = [
-            { wch: 12 },  // Date
-            { wch: 15 },  // Catégorie
-            { wch: 15 },  // Revenus
-            { wch: 15 },  // Coûts
-            { wch: 15 },  // Profit
-            { wch: 12 }   // Marge
-        ];
-
-        // Ajouter la feuille au workbook
-        XLSX.utils.book_append_sheet(wb, ws, "Données Financières");
-
-        // Créer une feuille de résumé
-        const summaryData = [
-            ['RÉSUMÉ FINANCIER', ''],
-            ['', ''],
-            ['Période', `${filteredData[0]?.date || ''} - ${filteredData[filteredData.length - 1]?.date || ''}`],
-            ['Nombre d\'entrées', filteredData.length],
-            ['', ''],
-            ['Revenus Totaux', filteredData.reduce((sum, item) => sum + item.revenue, 0)],
-            ['Coûts Totaux', filteredData.reduce((sum, item) => sum + item.costs, 0)],
-            ['Profit Total', filteredData.reduce((sum, item) => sum + (item.revenue - item.costs), 0)],
-            ['Marge Moyenne (%)', ((filteredData.reduce((sum, item) => sum + (item.revenue - item.costs), 0) / filteredData.reduce((sum, item) => sum + item.revenue, 0)) * 100).toFixed(2)]
-        ];
-
-        const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-        wsSummary['!cols'] = [{ wch: 20 }, { wch: 20 }];
-        XLSX.utils.book_append_sheet(wb, wsSummary, "Résumé");
-
-        // Générer le fichier
-        const fileName = `finances_${new Date().toISOString().split('T')[0]}.xlsx`;
-        XLSX.writeFile(wb, fileName);
-
-        showNotification('Export XLSX réussi !', 'success');
-    } catch (error) {
-        console.error('Erreur lors de l\'export:', error);
-        showNotification('Erreur lors de l\'export XLSX', 'error');
-    }
-}
-
-function showNotification(message, type) {
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.textContent = message;
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 15px 25px;
-        background: ${type === 'success' ? '#10b981' : '#ef4444'};
-        color: white;
-        border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        z-index: 10000;
-        animation: slideIn 0.3s ease-out;
-    `;
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        notification.style.animation = 'slideOut 0.3s ease-out';
-        setTimeout(() => notification.remove(), 300);
-    }, 3000);
-}
-
-// ============================================
-// UTILITAIRES
-// ============================================
-
-function formatCurrency(value) {
-    return new Intl.NumberFormat('fr-FR', {
-        style: 'currency',
-        currency: 'EUR'
-    }).format(value);
-}
-
-console.log('✅ Dashboard financier initialisé avec succès !');
+    <!-- Script principal avec version pour forcer le rechargement -->
+    <script src="main.js?v=20241117"></script>
+</body>
+</html>
