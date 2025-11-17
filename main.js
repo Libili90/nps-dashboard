@@ -474,4 +474,114 @@ function formatCurrency(value) {
     }).format(value);
 }
 
+// ============================================
+// SECTION 10: THÈME SOMBRE/CLAIR
+// ============================================
+
+function initTheme() {
+    const themeBtn = document.getElementById('theme-btn');
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    
+    // Appliquer le thème sauvegardé
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeIcon(savedTheme);
+    
+    // Toggle theme
+    themeBtn.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        
+        document.documentElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+        updateThemeIcon(newTheme);
+        
+        // Recréer les graphiques avec les nouvelles couleurs
+        if (mergedData.length > 0) {
+            updateCharts();
+        }
+    });
+}
+
+function updateThemeIcon(theme) {
+    const icon = document.querySelector('#theme-btn i');
+    icon.className = theme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
+}
+
+// ============================================
+// SECTION 11: MISE À JOUR TEMPS RÉEL
+// ============================================
+
+function updateLastUpdateTime() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    document.getElementById('last-update').textContent = `Mise à jour: ${timeString}`;
+}
+
+// ============================================
+// SECTION 12: COMPTEUR TABLEAU
+// ============================================
+
+function updateTableCount() {
+    const count = filteredData.length;
+    document.getElementById('table-count').textContent = `${count} entrée${count > 1 ? 's' : ''}`;
+}
+
+// Mettre à jour la fonction updateTable pour inclure le compteur
+const originalUpdateTable = updateTable;
+updateTable = function() {
+    originalUpdateTable();
+    updateTableCount();
+};
+
+// ============================================
+// SECTION 13: AMÉLIORATIONS DIVERSES
+// ============================================
+
+// Spinner de chargement
+function showLoading() {
+    document.getElementById('loading-spinner').style.display = 'flex';
+}
+
+function hideLoading() {
+    document.getElementById('loading-spinner').style.display = 'none';
+}
+
+// Améliorer la fonction de chargement de fichier
+const originalFileUploadHandler = document.getElementById('file-upload').onchange;
+document.getElementById('file-upload').addEventListener('change', async (e) => {
+    if (e.target.files.length === 0) return;
+    
+    showLoading();
+    
+    // Attendre un peu pour que le spinner s'affiche
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    try {
+        await handleFileUpload(e);
+        updateLastUpdateTime();
+        hideLoading();
+    } catch (error) {
+        hideLoading();
+        showNotification('Erreur lors du chargement du fichier', 'error');
+        console.error(error);
+    }
+});
+
+// Initialiser le thème au démarrage
+initTheme();
+
+// Mettre à jour l'heure toutes les secondes
+setInterval(updateLastUpdateTime, 1000);
+
 console.log('✅ Dashboard financier initialisé avec succès !');
+console.log('📊 Fonctionnalités disponibles:');
+console.log('   - Import CSV/XLSX');
+console.log('   - Graphiques interactifs');
+console.log('   - IA locale');
+console.log('   - Export XLSX');
+console.log('   - Thème sombre/clair');
+console.log('   - Filtres avancés');
