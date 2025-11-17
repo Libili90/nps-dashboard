@@ -1,8 +1,190 @@
 // ============================================
-// SECTION 5: MISE À JOUR DU DASHBOARD
+// VARIABLES GLOBALES
+// ============================================
+
+let mergedData = [];
+let filteredData = [];
+let periodRange = 30;
+
+let revenueChart = null;
+let profitChart = null;
+let categoryChart = null;
+
+// ============================================
+// INITIALISATION
+// ============================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    initEventListeners();
+    initTheme();
+    updateLastUpdateTime();
+    setInterval(updateLastUpdateTime, 1000);
+});
+
+function initEventListeners() {
+    document.getElementById('file-upload').addEventListener('change', handleFileUpload);
+    document.getElementById('period-select').addEventListener('change', handlePeriodChange);
+    document.getElementById('category-filter').addEventListener('change', handleCategoryFilter);
+    document.getElementById('export-btn').addEventListener('click', exportData);
+}
+
+// ============================================
+// GESTION DES FICHIERS
+// ============================================
+
+async function handleFileUpload(event) {
+    const files = event.target.files;
+    if (files.length === 0) return;
+
+    showLoading();
+
+    try {
+        const allData = [];
+
+        for (let file of files) {
+            const data = await readFile(file);
+            allData.push(...data);
+        }
+
+        mergedData = allData.sort((a, b) => new Date(a.date) - new Date(b.date));
+        filteredData = [...mergedData];
+        
+        populateCategoryFilter();
+        updateDashboard();
+        updateLastUpdateTime();
+        hideLoading();
+        
+        showNotification('✅ Fichiers chargés avec succès !', 'success');
+    } catch (error) {
+        console.error('Erreur:', error);
+        hideLoading();
+        showNotification('❌ Erreur lors du chargement', 'error');
+    }
+}
+
+function readFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        const fileName = file.name.toLowerCase();
+
+        reader.onload = (e) => {
+            try {
+                let data = [];
+
+                if (fileName.endsWith('.csv')) {
+                    data = parseCSV(e.target.result);
+                } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+                    data = parseExcel(e.target.result);
+                }
+
+                resolve(data);
+            } catch (error) {
+                reject(error);
+            }
+        };
+
+        reader.onerror = () => reject(new Error('Erreur de lecture du fichier'));
+
+        if (fileName.endsWith('.csv')) {
+            reader.readAsText(file);
+        } else {
+            reader.readAsBinaryString(file);
+        }
+    });
+}
+
+function parseCSV(text) {
+    const lines = text.trim().split('\n');
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+
+    const dateIndex = headers.findIndex(h => h === 'date');
+    const categoryIndex = headers.findIndex(h => h === 'category' || h === 'catégorie');
+    const revenueIndex = headers.findIndex(h => h === 'revenue' || h === 'revenus');
+    const costsIndex = headers.findIndex(h => h === 'costs' || h === 'coûts');
+
+    const data = [];
+
+    for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',');
+        
+        if (values.length < 4) continue;
+
+        data.push({
+            date: values[dateIndex]?.trim(),
+            category: values[categoryIndex]?.trim(),
+            revenue: parseFloat(values[revenueIndex]) || 0,
+            costs: parseFloat(values[costsIndex]) || 0
+        });
+    }
+
+    return data;
+}
+
+function parseExcel(data) {
+    const workbook = XLSX.read(data, { type: 'binary' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+    return jsonData.map(row => ({
+        date: row.date || row.Date || '',
+        category: row.category || row.Catégorie || row.Category || '',
+        revenue: parseFloat(row.revenue || row.Revenus || row.Revenue) || 0,
+        costs: parseFloat(row.costs || row.Coûts || row.Costs) || 0
+    }));
+}
+
+// ============================================
+// FILTRES
+// ============================================
+
+function populateCategoryFilter() {
+    const categories = [...new Set(mergedData.map(item => item.category))];
+    const select = document.getElementById('category-filter');
+    
+    select.innerHTML = '<option value="">Toutes les catégories</option>';
+    
+    categories.forEach(cat => {
+        const option = document.createElement('option');
+        option.value = cat;
+        option.textContent = cat;
+        select.appendChild(option);
+    });
+}
+
+function handlePeriodChange(event) {
+    periodRange = parseInt(event.target.value);
+    applyFilters();
+}
+
+function handleCategoryFilter(event) {
+    applyFilters();
+}
+
+function applyFilters() {
+    const selectedCategory = document.getElementById('category-filter').value;
+    
+    filteredData = mergedData.filter(item => {
+        if (selectedCategory && item.category !== selectedCategory) {
+            return false;
+        }
+        return true;
+    });
+
+    if (periodRange > 0) {
+        filteredData = filteredData.slice(-periodRange);
+    }
+
+    updateDashboard();
+}
+
+// ============================================
+// MISE À JOUR DU DASHBOARD
 // ============================================
 
 function updateDashboard() {
+    if (filteredData.length === 0) return;
+    
     calculateKPIs();
     updateCharts();
     updateTable();
@@ -10,51 +192,46 @@ function updateDashboard() {
 }
 
 function calculateKPIs() {
-    const data = filteredData.slice(-periodRange);
+    const data = filteredData;
     
     if (data.length === 0) return;
 
-    // Revenus totaux
     const totalRevenue = data.reduce((sum, item) => sum + item.revenue, 0);
     document.getElementById('total-revenue').textContent = formatCurrency(totalRevenue);
 
-    // Coûts totaux
     const totalCosts = data.reduce((sum, item) => sum + item.costs, 0);
     document.getElementById('total-costs').textContent = formatCurrency(totalCosts);
 
-    // Profit total
     const totalProfit = totalRevenue - totalCosts;
     document.getElementById('total-profit').textContent = formatCurrency(totalProfit);
 
-    // Marge moyenne
     const avgMargin = (totalProfit / totalRevenue) * 100;
     document.getElementById('avg-margin').textContent = avgMargin.toFixed(1) + '%';
 
-    // Tendances (comparaison avec période précédente)
-    calculateTrends(data);
+    calculateTrends();
 }
 
-function calculateTrends(currentData) {
-    const previousData = filteredData.slice(-periodRange * 2, -periodRange);
+function calculateTrends() {
+    const halfPoint = Math.floor(filteredData.length / 2);
     
-    if (previousData.length === 0) return;
+    if (halfPoint < 1) return;
 
-    const currentRevenue = currentData.reduce((sum, item) => sum + item.revenue, 0);
-    const previousRevenue = previousData.reduce((sum, item) => sum + item.revenue, 0);
-    
-    const revenueTrend = ((currentRevenue - previousRevenue) / previousRevenue) * 100;
+    const oldData = filteredData.slice(0, halfPoint);
+    const newData = filteredData.slice(halfPoint);
+
+    const oldRevenue = oldData.reduce((sum, item) => sum + item.revenue, 0);
+    const newRevenue = newData.reduce((sum, item) => sum + item.revenue, 0);
+    const revenueTrend = ((newRevenue - oldRevenue) / oldRevenue) * 100;
     updateTrendIndicator('revenue-trend', revenueTrend);
 
-    const currentCosts = currentData.reduce((sum, item) => sum + item.costs, 0);
-    const previousCosts = previousData.reduce((sum, item) => sum + item.costs, 0);
-    
-    const costsTrend = ((currentCosts - previousCosts) / previousCosts) * 100;
+    const oldCosts = oldData.reduce((sum, item) => sum + item.costs, 0);
+    const newCosts = newData.reduce((sum, item) => sum + item.costs, 0);
+    const costsTrend = ((newCosts - oldCosts) / oldCosts) * 100;
     updateTrendIndicator('costs-trend', costsTrend);
 
-    const currentProfit = currentRevenue - currentCosts;
-    const previousProfit = previousRevenue - previousCosts;
-    
-    const profitTrend = ((currentProfit - previousProfit) / previousProfit) * 100;
+    const oldProfit = oldRevenue - oldCosts;
+    const newProfit = newRevenue - newCosts;
+    const profitTrend = ((newProfit - oldProfit) / oldProfit) * 100;
     updateTrendIndicator('profit-trend', profitTrend);
 }
 
@@ -62,15 +239,14 @@ function updateTrendIndicator(elementId, trend) {
     const element = document.getElementById(elementId);
     if (!element) return;
 
-    element.textContent = (trend >= 0 ? '+' : '') + trend.toFixed(1) + '%';
-    element.className = 'trend ' + (trend >= 0 ? 'positive' : 'negative');
+    const sign = trend >= 0 ? '+' : '';
+    element.textContent = sign + trend.toFixed(1) + '%';
+    element.className = 'kpi-trend ' + (trend >= 0 ? 'positive' : 'negative');
 }
 
 // ============================================
-// SECTION 6: GRAPHIQUES (Chart.js)
+// GRAPHIQUES
 // ============================================
-
-let revenueChart, profitChart, categoryChart;
 
 function updateCharts() {
     updateRevenueChart();
@@ -79,10 +255,9 @@ function updateCharts() {
 }
 
 function updateRevenueChart() {
-    const data = filteredData.slice(-periodRange);
-    
-    const ctx = document.getElementById('revenue-chart').getContext('2d');
-    
+    const ctx = document.getElementById('revenue-chart');
+    if (!ctx) return;
+
     if (revenueChart) {
         revenueChart.destroy();
     }
@@ -90,10 +265,10 @@ function updateRevenueChart() {
     revenueChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: data.map(item => item.date),
+            labels: filteredData.map(item => item.date),
             datasets: [{
                 label: 'Revenus',
-                data: data.map(item => item.revenue),
+                data: filteredData.map(item => item.revenue),
                 borderColor: '#3b82f6',
                 backgroundColor: 'rgba(59, 130, 246, 0.1)',
                 tension: 0.4,
@@ -104,14 +279,10 @@ function updateRevenueChart() {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    display: false
-                },
+                legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
-                            return formatCurrency(context.parsed.y);
-                        }
+                        label: (context) => formatCurrency(context.parsed.y)
                     }
                 }
             },
@@ -119,9 +290,7 @@ function updateRevenueChart() {
                 y: {
                     beginAtZero: true,
                     ticks: {
-                        callback: function(value) {
-                            return formatCurrency(value);
-                        }
+                        callback: (value) => formatCurrency(value)
                     }
                 }
             }
@@ -130,38 +299,33 @@ function updateRevenueChart() {
 }
 
 function updateProfitChart() {
-    const data = filteredData.slice(-periodRange);
-    
-    const ctx = document.getElementById('profit-chart').getContext('2d');
-    
+    const ctx = document.getElementById('profit-chart');
+    if (!ctx) return;
+
     if (profitChart) {
         profitChart.destroy();
     }
 
+    const profits = filteredData.map(item => item.revenue - item.costs);
+
     profitChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: data.map(item => item.date),
+            labels: filteredData.map(item => item.date),
             datasets: [{
                 label: 'Profit',
-                data: data.map(item => item.revenue - item.costs),
-                backgroundColor: data.map(item => 
-                    item.revenue - item.costs >= 0 ? '#10b981' : '#ef4444'
-                )
+                data: profits,
+                backgroundColor: profits.map(p => p >= 0 ? '#10b981' : '#ef4444')
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    display: false
-                },
+                legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
-                            return formatCurrency(context.parsed.y);
-                        }
+                        label: (context) => formatCurrency(context.parsed.y)
                     }
                 }
             },
@@ -169,9 +333,7 @@ function updateProfitChart() {
                 y: {
                     beginAtZero: true,
                     ticks: {
-                        callback: function(value) {
-                            return formatCurrency(value);
-                        }
+                        callback: (value) => formatCurrency(value)
                     }
                 }
             }
@@ -180,20 +342,20 @@ function updateProfitChart() {
 }
 
 function updateCategoryChart() {
+    const ctx = document.getElementById('category-chart');
+    if (!ctx) return;
+
+    if (categoryChart) {
+        categoryChart.destroy();
+    }
+
     const categoryData = {};
-    
-    filteredData.slice(-periodRange).forEach(item => {
+    filteredData.forEach(item => {
         if (!categoryData[item.category]) {
             categoryData[item.category] = 0;
         }
         categoryData[item.category] += item.revenue;
     });
-
-    const ctx = document.getElementById('category-chart').getContext('2d');
-    
-    if (categoryChart) {
-        categoryChart.destroy();
-    }
 
     const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
@@ -210,12 +372,10 @@ function updateCategoryChart() {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    position: 'bottom'
-                },
+                legend: { position: 'bottom' },
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
+                        label: (context) => {
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
                             const percentage = ((context.parsed / total) * 100).toFixed(1);
                             return context.label + ': ' + formatCurrency(context.parsed) + ' (' + percentage + '%)';
@@ -228,16 +388,31 @@ function updateCategoryChart() {
 }
 
 // ============================================
-// SECTION 7: TABLEAU DE DONNÉES
+// TABLEAU
 // ============================================
 
 function updateTable() {
     const tbody = document.getElementById('data-table-body');
+    if (!tbody) return;
+
     tbody.innerHTML = '';
 
-    const data = filteredData.slice(-50); // Dernières 50 entrées
+    const displayData = filteredData.slice(-50);
 
-    data.forEach(item => {
+    if (displayData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="no-data">
+                    <i class="fas fa-inbox"></i>
+                    <p>Aucune donnée disponible</p>
+                    <small>Chargez un fichier pour commencer</small>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    displayData.forEach(item => {
         const row = document.createElement('tr');
         const profit = item.revenue - item.costs;
         const margin = (profit / item.revenue) * 100;
@@ -253,11 +428,27 @@ function updateTable() {
 
         tbody.appendChild(row);
     });
+
+    updateTableCount();
 }
+
+function updateTableCount() {
+    const count = filteredData.length;
+    const countElement = document.getElementById('table-count');
+    if (countElement) {
+        countElement.textContent = `${count} entrée${count > 1 ? 's' : ''}`;
+    }
+}
+
+// ============================================
+// IA LOCALE
+// ============================================
 
 function updateSummary() {
     const summaryDiv = document.getElementById('ai-summary');
-    summaryDiv.innerHTML = '<p class="loading">Génération du résumé...</p>';
+    if (!summaryDiv) return;
+
+    summaryDiv.innerHTML = '<p class="loading">⏳ Génération de l\'analyse...</p>';
     
     setTimeout(() => {
         const summary = generateAISummary();
@@ -265,25 +456,17 @@ function updateSummary() {
     }, 500);
 }
 
-// ============================================
-// SECTION 8: IA LOCALE (Sans API)
-// ============================================
-
 function generateAISummary() {
-    const data = filteredData.slice(-periodRange);
-    
-    if (data.length === 0) {
-        return '<p>Aucune donnée disponible pour l\'analyse.</p>';
+    if (filteredData.length === 0) {
+        return '<p class="placeholder">Chargez des données pour obtenir une analyse...</p>';
     }
 
-    // Calculs statistiques
-    const totalRevenue = data.reduce((sum, item) => sum + item.revenue, 0);
-    const totalCosts = data.reduce((sum, item) => sum + item.costs, 0);
+    const totalRevenue = filteredData.reduce((sum, item) => sum + item.revenue, 0);
+    const totalCosts = filteredData.reduce((sum, item) => sum + item.costs, 0);
     const totalProfit = totalRevenue - totalCosts;
     const avgMargin = (totalProfit / totalRevenue) * 100;
 
-    // Meilleure et pire journée
-    const profits = data.map(item => ({
+    const profits = filteredData.map(item => ({
         date: item.date,
         profit: item.revenue - item.costs
     }));
@@ -291,9 +474,9 @@ function generateAISummary() {
     const bestDay = profits.reduce((max, item) => item.profit > max.profit ? item : max);
     const worstDay = profits.reduce((min, item) => item.profit < min.profit ? item : min);
 
-    // Tendance
-    const recentData = data.slice(-7);
-    const olderData = data.slice(-14, -7);
+    const halfPoint = Math.floor(filteredData.length / 2);
+    const recentData = filteredData.slice(halfPoint);
+    const olderData = filteredData.slice(0, halfPoint);
     
     const recentAvg = recentData.reduce((sum, item) => sum + item.revenue, 0) / recentData.length;
     const olderAvg = olderData.reduce((sum, item) => sum + item.revenue, 0) / olderData.length;
@@ -301,16 +484,13 @@ function generateAISummary() {
     const trend = recentAvg > olderAvg ? 'hausse' : 'baisse';
     const trendPercent = Math.abs(((recentAvg - olderAvg) / olderAvg) * 100).toFixed(1);
 
-    // Catégorie dominante
     const categoryRevenue = {};
-    data.forEach(item => {
+    filteredData.forEach(item => {
         categoryRevenue[item.category] = (categoryRevenue[item.category] || 0) + item.revenue;
     });
     
-    const topCategory = Object.entries(categoryRevenue)
-        .sort((a, b) => b[1] - a[1])[0];
+    const topCategory = Object.entries(categoryRevenue).sort((a, b) => b[1] - a[1])[0];
 
-    // Génération du résumé HTML
     return `
         <div class="ai-summary-content">
             <h3>📊 Analyse Intelligente</h3>
@@ -326,7 +506,7 @@ function generateAISummary() {
             <div class="summary-section">
                 <h4>Tendance</h4>
                 <p>Les revenus sont en <strong>${trend}</strong> de <strong>${trendPercent}%</strong> 
-                par rapport à la période précédente.</p>
+                par rapport à la première moitié de la période.</p>
             </div>
 
             <div class="summary-section">
@@ -340,19 +520,21 @@ function generateAISummary() {
 
             <div class="summary-section">
                 <h4>💡 Recommandations</h4>
-                ${generateRecommendations(avgMargin, trend, data)}
+                ${generateRecommendations(avgMargin, trend)}
             </div>
         </div>
     `;
 }
 
-function generateRecommendations(margin, trend, data) {
+function generateRecommendations(margin, trend) {
     const recommendations = [];
 
     if (margin < 20) {
         recommendations.push('<li>⚠️ Votre marge est faible. Envisagez d\'optimiser vos coûts ou d\'augmenter vos prix.</li>');
     } else if (margin > 40) {
         recommendations.push('<li>✅ Excellente marge ! Maintenez cette performance.</li>');
+    } else {
+        recommendations.push('<li>👍 Marge saine. Continuez sur cette voie.</li>');
     }
 
     if (trend === 'baisse') {
@@ -361,30 +543,22 @@ function generateRecommendations(margin, trend, data) {
         recommendations.push('<li>📈 Bonne dynamique de croissance. Capitalisez sur cette tendance.</li>');
     }
 
-    // Analyse de la volatilité
-    const revenues = data.map(item => item.revenue);
-    const avg = revenues.reduce((a, b) => a + b, 0) / revenues.length;
-    const variance = revenues.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / revenues.length;
-    const stdDev = Math.sqrt(variance);
-    const volatility = (stdDev / avg) * 100;
-
-    if (volatility > 30) {
-        recommendations.push('<li>⚡ Forte volatilité détectée. Travaillez sur la stabilisation de vos revenus.</li>');
-    }
-
     return '<ul>' + recommendations.join('') + '</ul>';
 }
 
 // ============================================
-// SECTION 9: EXPORT XLSX
+// EXPORT XLSX
 // ============================================
 
 async function exportData() {
+    if (filteredData.length === 0) {
+        showNotification('❌ Aucune donnée à exporter', 'error');
+        return;
+    }
+
     try {
-        // Créer un nouveau workbook
         const wb = XLSX.utils.book_new();
         
-        // Préparer les données pour l'export
         const exportData = filteredData.map(item => ({
             'Date': item.date,
             'Catégorie': item.category,
@@ -394,48 +568,109 @@ async function exportData() {
             'Marge (%)': (((item.revenue - item.costs) / item.revenue) * 100).toFixed(2)
         }));
 
-        // Créer la feuille de données
         const ws = XLSX.utils.json_to_sheet(exportData);
-
-        // Ajouter des styles (largeurs de colonnes)
         ws['!cols'] = [
-            { wch: 12 },  // Date
-            { wch: 15 },  // Catégorie
-            { wch: 15 },  // Revenus
-            { wch: 15 },  // Coûts
-            { wch: 15 },  // Profit
-            { wch: 12 }   // Marge
+            { wch: 12 }, { wch: 15 }, { wch: 15 },
+            { wch: 15 }, { wch: 15 }, { wch: 12 }
         ];
 
-        // Ajouter la feuille au workbook
-        XLSX.utils.book_append_sheet(wb, ws, "Données Financières");
+        XLSX.utils.book_append_sheet(wb, ws, "Données");
 
-        // Créer une feuille de résumé
+        const totalRevenue = filteredData.reduce((sum, item) => sum + item.revenue, 0);
+        const totalCosts = filteredData.reduce((sum, item) => sum + item.costs, 0);
+        const totalProfit = totalRevenue - totalCosts;
+
         const summaryData = [
             ['RÉSUMÉ FINANCIER', ''],
             ['', ''],
             ['Période', `${filteredData[0]?.date || ''} - ${filteredData[filteredData.length - 1]?.date || ''}`],
             ['Nombre d\'entrées', filteredData.length],
             ['', ''],
-            ['Revenus Totaux', filteredData.reduce((sum, item) => sum + item.revenue, 0)],
-            ['Coûts Totaux', filteredData.reduce((sum, item) => sum + item.costs, 0)],
-            ['Profit Total', filteredData.reduce((sum, item) => sum + (item.revenue - item.costs), 0)],
-            ['Marge Moyenne (%)', ((filteredData.reduce((sum, item) => sum + (item.revenue - item.costs), 0) / filteredData.reduce((sum, item) => sum + item.revenue, 0)) * 100).toFixed(2)]
+            ['Revenus Totaux', totalRevenue],
+            ['Coûts Totaux', totalCosts],
+            ['Profit Total', totalProfit],
+            ['Marge Moyenne (%)', ((totalProfit / totalRevenue) * 100).toFixed(2)]
         ];
 
         const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
         wsSummary['!cols'] = [{ wch: 20 }, { wch: 20 }];
         XLSX.utils.book_append_sheet(wb, wsSummary, "Résumé");
 
-        // Générer le fichier
         const fileName = `finances_${new Date().toISOString().split('T')[0]}.xlsx`;
         XLSX.writeFile(wb, fileName);
 
-        showNotification('Export XLSX réussi !', 'success');
+        showNotification('✅ Export XLSX réussi !', 'success');
     } catch (error) {
-        console.error('Erreur lors de l\'export:', error);
-        showNotification('Erreur lors de l\'export XLSX', 'error');
+        console.error('Erreur export:', error);
+        showNotification('❌ Erreur lors de l\'export', 'error');
     }
+}
+
+// ============================================
+// THÈME
+// ============================================
+
+function initTheme() {
+    const themeBtn = document.getElementById('theme-btn');
+    if (!themeBtn) return;
+
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeIcon(savedTheme);
+    
+    themeBtn.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        
+        document.documentElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+        updateThemeIcon(newTheme);
+        
+        if (filteredData.length > 0) {
+            updateCharts();
+        }
+    });
+}
+
+function updateThemeIcon(theme) {
+    const icon = document.querySelector('#theme-btn i');
+    if (icon) {
+        icon.className = theme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
+    }
+}
+
+// ============================================
+// UTILITAIRES
+// ============================================
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('fr-FR', {
+        style: 'currency',
+        currency: 'EUR'
+    }).format(value);
+}
+
+function updateLastUpdateTime() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    const element = document.getElementById('last-update');
+    if (element) {
+        element.textContent = `Mise à jour: ${timeString}`;
+    }
+}
+
+function showLoading() {
+    const spinner = document.getElementById('loading-spinner');
+    if (spinner) spinner.style.display = 'flex';
+}
+
+function hideLoading() {
+    const spinner = document.getElementById('loading-spinner');
+    if (spinner) spinner.style.display = 'none';
 }
 
 function showNotification(message, type) {
@@ -463,125 +698,5 @@ function showNotification(message, type) {
     }, 3000);
 }
 
-// ============================================
-// UTILITAIRES
-// ============================================
-
-function formatCurrency(value) {
-    return new Intl.NumberFormat('fr-FR', {
-        style: 'currency',
-        currency: 'EUR'
-    }).format(value);
-}
-
-// ============================================
-// SECTION 10: THÈME SOMBRE/CLAIR
-// ============================================
-
-function initTheme() {
-    const themeBtn = document.getElementById('theme-btn');
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    
-    // Appliquer le thème sauvegardé
-    document.documentElement.setAttribute('data-theme', savedTheme);
-    updateThemeIcon(savedTheme);
-    
-    // Toggle theme
-    themeBtn.addEventListener('click', () => {
-        const currentTheme = document.documentElement.getAttribute('data-theme');
-        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-        
-        document.documentElement.setAttribute('data-theme', newTheme);
-        localStorage.setItem('theme', newTheme);
-        updateThemeIcon(newTheme);
-        
-        // Recréer les graphiques avec les nouvelles couleurs
-        if (mergedData.length > 0) {
-            updateCharts();
-        }
-    });
-}
-
-function updateThemeIcon(theme) {
-    const icon = document.querySelector('#theme-btn i');
-    icon.className = theme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
-}
-
-// ============================================
-// SECTION 11: MISE À JOUR TEMPS RÉEL
-// ============================================
-
-function updateLastUpdateTime() {
-    const now = new Date();
-    const timeString = now.toLocaleTimeString('fr-FR', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-    });
-    document.getElementById('last-update').textContent = `Mise à jour: ${timeString}`;
-}
-
-// ============================================
-// SECTION 12: COMPTEUR TABLEAU
-// ============================================
-
-function updateTableCount() {
-    const count = filteredData.length;
-    document.getElementById('table-count').textContent = `${count} entrée${count > 1 ? 's' : ''}`;
-}
-
-// Mettre à jour la fonction updateTable pour inclure le compteur
-const originalUpdateTable = updateTable;
-updateTable = function() {
-    originalUpdateTable();
-    updateTableCount();
-};
-
-// ============================================
-// SECTION 13: AMÉLIORATIONS DIVERSES
-// ============================================
-
-// Spinner de chargement
-function showLoading() {
-    document.getElementById('loading-spinner').style.display = 'flex';
-}
-
-function hideLoading() {
-    document.getElementById('loading-spinner').style.display = 'none';
-}
-
-// Améliorer la fonction de chargement de fichier
-const originalFileUploadHandler = document.getElementById('file-upload').onchange;
-document.getElementById('file-upload').addEventListener('change', async (e) => {
-    if (e.target.files.length === 0) return;
-    
-    showLoading();
-    
-    // Attendre un peu pour que le spinner s'affiche
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    try {
-        await handleFileUpload(e);
-        updateLastUpdateTime();
-        hideLoading();
-    } catch (error) {
-        hideLoading();
-        showNotification('Erreur lors du chargement du fichier', 'error');
-        console.error(error);
-    }
-});
-
-// Initialiser le thème au démarrage
-initTheme();
-
-// Mettre à jour l'heure toutes les secondes
-setInterval(updateLastUpdateTime, 1000);
-
-console.log('✅ Dashboard financier initialisé avec succès !');
-console.log('📊 Fonctionnalités disponibles:');
-console.log('   - Import CSV/XLSX');
-console.log('   - Graphiques interactifs');
-console.log('   - IA locale');
-console.log('   - Export XLSX');
-console.log('   - Thème sombre/clair');
-console.log('   - Filtres avancés');
+console.log('✅ Dashboard financier initialisé !');
+console.log('📊 Prêt à charger des données...');
