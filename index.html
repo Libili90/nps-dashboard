@@ -1,260 +1,477 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard NPS - Analyse Interactive</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-</head>
-<body>
-    <div class="container">
-        <!-- Header avec bouton Data -->
-        <header class="header">
-            <h1>📊 Dashboard NPS - Analyse Interactive</h1>
-            <p class="subtitle">Analyse approfondie des retours clients avec IA</p>
-            <button id="dataBtn" class="btn-data">📂 Data</button>
-        </header>
+// ============================================
+// SECTION 5: MISE À JOUR DU DASHBOARD
+// ============================================
 
-        <!-- Modal Upload (Hidden by default) -->
-        <div class="modal-overlay" id="uploadModal" style="display: none;">
-            <div class="modal-content">
-                <button class="modal-close" id="closeModal">✕</button>
-                <h2>🔒 Import des données</h2>
-                
-                <!-- Password Protection -->
-                <div id="passwordSection">
-                    <div class="password-input-group">
-                        <input type="password" id="passwordInput" placeholder="Entrez le mot de passe..." class="password-input">
-                        <button id="unlockBtn" class="btn-unlock">Déverrouiller</button>
-                    </div>
-                    <p class="password-hint">🔑 Mot de passe requis pour accéder aux données</p>
-                </div>
+function updateDashboard() {
+    calculateKPIs();
+    updateCharts();
+    updateTable();
+    updateSummary();
+}
 
-                <!-- Upload Section (Hidden until password is correct) -->
-                <div id="uploadSection" style="display: none;">
-                    <div class="upload-grid">
-                        <div class="upload-box">
-                            <label for="compoFile" class="upload-label">
-                                <span class="upload-icon">📋</span>
-                                <span class="upload-text">Fichier Compo (Logs)</span>
-                                <span class="upload-hint">Glissez ou cliquez</span>
-                            </label>
-                            <input type="file" id="compoFile" accept=".xlsx,.xls" class="file-input">
-                            <div class="file-status" id="compoStatus"></div>
-                        </div>
-                        <div class="upload-box">
-                            <label for="npsFile" class="upload-label">
-                                <span class="upload-icon">📈</span>
-                                <span class="upload-text">Fichier NPS (Exportation)</span>
-                                <span class="upload-hint">Glissez ou cliquez</span>
-                            </label>
-                            <input type="file" id="npsFile" accept=".xlsx,.xls" class="file-input">
-                            <div class="file-status" id="npsStatus"></div>
-                        </div>
-                    </div>
-                    <button id="processBtn" class="btn-primary" disabled>Analyser les données</button>
-                </div>
-            </div>
-        </div>
+function calculateKPIs() {
+    const data = filteredData.slice(-periodRange);
+    
+    if (data.length === 0) return;
 
-        <!-- Dashboard Section (Visible by default, shows message until data loaded) -->
-        <section class="dashboard-section" id="dashboardSection">
+    // Revenus totaux
+    const totalRevenue = data.reduce((sum, item) => sum + item.revenue, 0);
+    document.getElementById('total-revenue').textContent = formatCurrency(totalRevenue);
+
+    // Coûts totaux
+    const totalCosts = data.reduce((sum, item) => sum + item.costs, 0);
+    document.getElementById('total-costs').textContent = formatCurrency(totalCosts);
+
+    // Profit total
+    const totalProfit = totalRevenue - totalCosts;
+    document.getElementById('total-profit').textContent = formatCurrency(totalProfit);
+
+    // Marge moyenne
+    const avgMargin = (totalProfit / totalRevenue) * 100;
+    document.getElementById('avg-margin').textContent = avgMargin.toFixed(1) + '%';
+
+    // Tendances (comparaison avec période précédente)
+    calculateTrends(data);
+}
+
+function calculateTrends(currentData) {
+    const previousData = filteredData.slice(-periodRange * 2, -periodRange);
+    
+    if (previousData.length === 0) return;
+
+    const currentRevenue = currentData.reduce((sum, item) => sum + item.revenue, 0);
+    const previousRevenue = previousData.reduce((sum, item) => sum + item.revenue, 0);
+    
+    const revenueTrend = ((currentRevenue - previousRevenue) / previousRevenue) * 100;
+    updateTrendIndicator('revenue-trend', revenueTrend);
+
+    const currentCosts = currentData.reduce((sum, item) => sum + item.costs, 0);
+    const previousCosts = previousData.reduce((sum, item) => sum + item.costs, 0);
+    
+    const costsTrend = ((currentCosts - previousCosts) / previousCosts) * 100;
+    updateTrendIndicator('costs-trend', costsTrend);
+
+    const currentProfit = currentRevenue - currentCosts;
+    const previousProfit = previousRevenue - previousCosts;
+    
+    const profitTrend = ((currentProfit - previousProfit) / previousProfit) * 100;
+    updateTrendIndicator('profit-trend', profitTrend);
+}
+
+function updateTrendIndicator(elementId, trend) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    element.textContent = (trend >= 0 ? '+' : '') + trend.toFixed(1) + '%';
+    element.className = 'trend ' + (trend >= 0 ? 'positive' : 'negative');
+}
+
+// ============================================
+// SECTION 6: GRAPHIQUES (Chart.js)
+// ============================================
+
+let revenueChart, profitChart, categoryChart;
+
+function updateCharts() {
+    updateRevenueChart();
+    updateProfitChart();
+    updateCategoryChart();
+}
+
+function updateRevenueChart() {
+    const data = filteredData.slice(-periodRange);
+    
+    const ctx = document.getElementById('revenue-chart').getContext('2d');
+    
+    if (revenueChart) {
+        revenueChart.destroy();
+    }
+
+    revenueChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(item => item.date),
+            datasets: [{
+                label: 'Revenus',
+                data: data.map(item => item.revenue),
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return formatCurrency(context.parsed.y);
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return formatCurrency(value);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateProfitChart() {
+    const data = filteredData.slice(-periodRange);
+    
+    const ctx = document.getElementById('profit-chart').getContext('2d');
+    
+    if (profitChart) {
+        profitChart.destroy();
+    }
+
+    profitChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(item => item.date),
+            datasets: [{
+                label: 'Profit',
+                data: data.map(item => item.revenue - item.costs),
+                backgroundColor: data.map(item => 
+                    item.revenue - item.costs >= 0 ? '#10b981' : '#ef4444'
+                )
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return formatCurrency(context.parsed.y);
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return formatCurrency(value);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function updateCategoryChart() {
+    const categoryData = {};
+    
+    filteredData.slice(-periodRange).forEach(item => {
+        if (!categoryData[item.category]) {
+            categoryData[item.category] = 0;
+        }
+        categoryData[item.category] += item.revenue;
+    });
+
+    const ctx = document.getElementById('category-chart').getContext('2d');
+    
+    if (categoryChart) {
+        categoryChart.destroy();
+    }
+
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+
+    categoryChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(categoryData),
+            datasets: [{
+                data: Object.values(categoryData),
+                backgroundColor: colors
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((context.parsed / total) * 100).toFixed(1);
+                            return context.label + ': ' + formatCurrency(context.parsed) + ' (' + percentage + '%)';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// ============================================
+// SECTION 7: TABLEAU DE DONNÉES
+// ============================================
+
+function updateTable() {
+    const tbody = document.getElementById('data-table-body');
+    tbody.innerHTML = '';
+
+    const data = filteredData.slice(-50); // Dernières 50 entrées
+
+    data.forEach(item => {
+        const row = document.createElement('tr');
+        const profit = item.revenue - item.costs;
+        const margin = (profit / item.revenue) * 100;
+
+        row.innerHTML = `
+            <td>${item.date}</td>
+            <td>${item.category}</td>
+            <td>${formatCurrency(item.revenue)}</td>
+            <td>${formatCurrency(item.costs)}</td>
+            <td class="${profit >= 0 ? 'positive' : 'negative'}">${formatCurrency(profit)}</td>
+            <td>${margin.toFixed(1)}%</td>
+        `;
+
+        tbody.appendChild(row);
+    });
+}
+
+function updateSummary() {
+    const summaryDiv = document.getElementById('ai-summary');
+    summaryDiv.innerHTML = '<p class="loading">Génération du résumé...</p>';
+    
+    setTimeout(() => {
+        const summary = generateAISummary();
+        summaryDiv.innerHTML = summary;
+    }, 500);
+}
+
+// ============================================
+// SECTION 8: IA LOCALE (Sans API)
+// ============================================
+
+function generateAISummary() {
+    const data = filteredData.slice(-periodRange);
+    
+    if (data.length === 0) {
+        return '<p>Aucune donnée disponible pour l\'analyse.</p>';
+    }
+
+    // Calculs statistiques
+    const totalRevenue = data.reduce((sum, item) => sum + item.revenue, 0);
+    const totalCosts = data.reduce((sum, item) => sum + item.costs, 0);
+    const totalProfit = totalRevenue - totalCosts;
+    const avgMargin = (totalProfit / totalRevenue) * 100;
+
+    // Meilleure et pire journée
+    const profits = data.map(item => ({
+        date: item.date,
+        profit: item.revenue - item.costs
+    }));
+    
+    const bestDay = profits.reduce((max, item) => item.profit > max.profit ? item : max);
+    const worstDay = profits.reduce((min, item) => item.profit < min.profit ? item : min);
+
+    // Tendance
+    const recentData = data.slice(-7);
+    const olderData = data.slice(-14, -7);
+    
+    const recentAvg = recentData.reduce((sum, item) => sum + item.revenue, 0) / recentData.length;
+    const olderAvg = olderData.reduce((sum, item) => sum + item.revenue, 0) / olderData.length;
+    
+    const trend = recentAvg > olderAvg ? 'hausse' : 'baisse';
+    const trendPercent = Math.abs(((recentAvg - olderAvg) / olderAvg) * 100).toFixed(1);
+
+    // Catégorie dominante
+    const categoryRevenue = {};
+    data.forEach(item => {
+        categoryRevenue[item.category] = (categoryRevenue[item.category] || 0) + item.revenue;
+    });
+    
+    const topCategory = Object.entries(categoryRevenue)
+        .sort((a, b) => b[1] - a[1])[0];
+
+    // Génération du résumé HTML
+    return `
+        <div class="ai-summary-content">
+            <h3>📊 Analyse Intelligente</h3>
             
-            <!-- Empty State -->
-            <div class="empty-state" id="emptyState">
-                <div class="empty-icon">📊</div>
-                <h2>Aucune donnée chargée</h2>
-                <p>Cliquez sur le bouton <strong>"📂 Data"</strong> en haut à droite pour importer vos fichiers Excel</p>
+            <div class="summary-section">
+                <h4>Performance Globale</h4>
+                <p>Sur la période analysée, votre activité a généré <strong>${formatCurrency(totalRevenue)}</strong> 
+                de revenus pour <strong>${formatCurrency(totalCosts)}</strong> de coûts, 
+                résultant en un profit de <strong>${formatCurrency(totalProfit)}</strong> 
+                (marge: <strong>${avgMargin.toFixed(1)}%</strong>).</p>
             </div>
 
-            <!-- Data Loaded Section (Hidden until data is processed) -->
-            <div id="dataSection" style="display: none;">
-                
-                <!-- Filters -->
-                <div class="filters-card">
-                    <h2>🔍 Filtres intelligents <span style="font-size: 0.8rem; opacity: 0.7;">(Optionnel)</span></h2>
-                    <div class="filters-grid">
-                        <div class="filter-group">
-                            <label>🔑 Log Agent</label>
-                            <input type="text" id="filterLog" placeholder="Rechercher un log..." class="filter-input">
-                            <div id="logSuggestions" class="suggestions"></div>
-                        </div>
-                        <div class="filter-group">
-                            <label>👤 Nom/Prénom Agent</label>
-                            <input type="text" id="filterAgent" placeholder="Rechercher un agent..." class="filter-input">
-                            <div id="agentSuggestions" class="suggestions"></div>
-                        </div>
-                        <div class="filter-group">
-                            <label>👥 Encadrants (TL)</label>
-                            <div id="filterTL" class="checkbox-group"></div>
-                        </div>
-                        <div class="filter-group">
-                            <label>🎯 Compétences</label>
-                            <div id="filterCompetence" class="checkbox-group"></div>
-                        </div>
-                        <div class="filter-group">
-                            <label>📅 Statut Agent</label>
-                            <select id="filterDateType" class="filter-select">
-                                <option value="all">Tous les agents</option>
-                                <option value="active">Agents actifs uniquement</option>
-                                <option value="after">Démission après le...</option>
-                                <option value="before">Démission avant le...</option>
-                            </select>
-                            <input type="date" id="filterDate" class="filter-input" style="display: none;">
-                        </div>
-                        <div class="filter-group">
-                            <label>📆 Période NPS</label>
-                            <input type="month" id="filterPeriod" class="filter-input">
-                        </div>
-                    </div>
-                    <div class="filter-actions">
-                        <button id="resetFilters" class="btn-secondary">🔁 Réinitialiser</button>
-                        <button id="exportCSV" class="btn-export">📥 Exporter CSV</button>
-                    </div>
-                </div>
-
-                <!-- KPI Cards -->
-                <div class="kpi-grid" id="kpiGrid">
-                    <div class="kpi-card">
-                        <div class="kpi-icon">📊</div>
-                        <div class="kpi-content">
-                            <h3>NPS Global</h3>
-                            <div class="kpi-value" id="npsGlobal">-</div>
-                            <div class="kpi-trend" id="npsTrend"></div>
-                        </div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-icon">📝</div>
-                        <div class="kpi-content">
-                            <h3>Nb Enquêtes</h3>
-                            <div class="kpi-value" id="nbSurveys">-</div>
-                            <div class="kpi-detail" id="surveyDetail"></div>
-                        </div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-icon">✅</div>
-                        <div class="kpi-content">
-                            <h3>Taux Résolution</h3>
-                            <div class="kpi-value" id="resolutionRate">-</div>
-                            <div class="kpi-detail" id="resolutionDetail"></div>
-                        </div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-icon">📈</div>
-                        <div class="kpi-content">
-                            <h3>Évolution</h3>
-                            <div class="kpi-value" id="evolution">-</div>
-                            <div class="kpi-detail" id="evolutionDetail"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Charts Grid -->
-                <div class="charts-grid">
-                    <div class="chart-card">
-                        <h3>📈 Évolution du NPS</h3>
-                        <canvas id="npsEvolutionChart"></canvas>
-                    </div>
-                    <div class="chart-card">
-                        <h3>👥 NPS par Encadrant (Top/Bottom 10)</h3>
-                        <canvas id="npsByTLChart"></canvas>
-                    </div>
-                    <div class="chart-card">
-                        <h3>🎯 NPS par Compétence</h3>
-                        <canvas id="npsByCompetenceChart"></canvas>
-                    </div>
-                    <div class="chart-card">
-                        <h3>📊 Distribution des Scores</h3>
-                        <canvas id="scoreDistributionChart"></canvas>
-                    </div>
-                </div>
-
-                <!-- Verbatim Analysis -->
-                <div class="analysis-card" id="analysisCard">
-                    <h2>🤖 Analyse IA des Verbatims</h2>
-                    
-                    <!-- API Config inline -->
-                    <div class="api-config-inline">
-                        <div class="api-option">
-                            <input type="radio" id="apiOpenAI" name="apiChoice" value="openai" checked>
-                            <label for="apiOpenAI">OpenAI GPT-4</label>
-                            <input type="text" id="openaiKey" placeholder="sk-..." class="api-input">
-                        </div>
-                        <div class="api-option">
-                            <input type="radio" id="apiGemini" name="apiChoice" value="gemini">
-                            <label for="apiGemini">Google Gemini</label>
-                            <input type="text" id="geminiKey" placeholder="AIza..." class="api-input">
-                        </div>
-                    </div>
-                    
-                    <button id="analyzeBtn" class="btn-primary">Lancer l'analyse IA</button>
-                    <div id="analysisResults" class="analysis-results" style="display: none;">
-                        <div class="analysis-section">
-                            <h3>🎯 Thèmes principaux</h3>
-                            <div id="themes"></div>
-                        </div>
-                        <div class="analysis-section">
-                            <h3>⚠️ Points faibles identifiés</h3>
-                            <div id="weaknesses"></div>
-                        </div>
-                        <div class="analysis-section">
-                            <h3>📋 Plan d'action 30/60/90 jours</h3>
-                            <div id="actionPlan"></div>
-                        </div>
-                        <div class="analysis-section">
-                            <h3>🏷️ Tags des verbatims</h3>
-                            <div id="tags"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Detailed Table -->
-                <div class="table-card">
-                    <h2>📋 Détail par Agent</h2>
-                    <div class="table-controls">
-                        <input type="text" id="tableSearch" placeholder="Rechercher dans la table..." class="table-search">
-                        <select id="tableSort" class="table-sort">
-                            <option value="nps-desc">NPS (décroissant)</option>
-                            <option value="nps-asc">NPS (croissant)</option>
-                            <option value="surveys-desc">Nb Enquêtes (décroissant)</option>
-                            <option value="agent-asc">Agent (A-Z)</option>
-                        </select>
-                    </div>
-                    <div class="table-wrapper">
-                        <table id="detailTable">
-                            <thead>
-                                <tr>
-                                    <th>Log</th>
-                                    <th>Agent</th>
-                                    <th>Encadrant</th>
-                                    <th>Compétence</th>
-                                    <th>NPS</th>
-                                    <th>Nb Enquêtes</th>
-                                    <th>Taux Résolution</th>
-                                    <th>Promoteurs</th>
-                                    <th>Passifs</th>
-                                    <th>Détracteurs</th>
-                                    <th>Date Fin</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tableBody"></tbody>
-                        </table>
-                    </div>
-                </div>
-
+            <div class="summary-section">
+                <h4>Tendance</h4>
+                <p>Les revenus sont en <strong>${trend}</strong> de <strong>${trendPercent}%</strong> 
+                par rapport à la période précédente.</p>
             </div>
-        </section>
 
-        <!-- Loading Overlay -->
-        <div class="loading-overlay" id="loadingOverlay" style="display: none;">
-            <div class="loading-spinner"></div>
-            <p class="loading-text">Traitement en cours...</p>
+            <div class="summary-section">
+                <h4>Points Clés</h4>
+                <ul>
+                    <li><strong>Meilleure journée:</strong> ${bestDay.date} (${formatCurrency(bestDay.profit)})</li>
+                    <li><strong>Journée la plus difficile:</strong> ${worstDay.date} (${formatCurrency(worstDay.profit)})</li>
+                    <li><strong>Catégorie dominante:</strong> ${topCategory[0]} (${formatCurrency(topCategory[1])})</li>
+                </ul>
+            </div>
+
+            <div class="summary-section">
+                <h4>💡 Recommandations</h4>
+                ${generateRecommendations(avgMargin, trend, data)}
+            </div>
         </div>
+    `;
+}
 
-    </div>
+function generateRecommendations(margin, trend, data) {
+    const recommendations = [];
 
-    <script src="main.js"></script>
-</body>
-</html>
+    if (margin < 20) {
+        recommendations.push('<li>⚠️ Votre marge est faible. Envisagez d\'optimiser vos coûts ou d\'augmenter vos prix.</li>');
+    } else if (margin > 40) {
+        recommendations.push('<li>✅ Excellente marge ! Maintenez cette performance.</li>');
+    }
+
+    if (trend === 'baisse') {
+        recommendations.push('<li>📉 Attention à la tendance baissière. Analysez les causes et ajustez votre stratégie.</li>');
+    } else {
+        recommendations.push('<li>📈 Bonne dynamique de croissance. Capitalisez sur cette tendance.</li>');
+    }
+
+    // Analyse de la volatilité
+    const revenues = data.map(item => item.revenue);
+    const avg = revenues.reduce((a, b) => a + b, 0) / revenues.length;
+    const variance = revenues.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / revenues.length;
+    const stdDev = Math.sqrt(variance);
+    const volatility = (stdDev / avg) * 100;
+
+    if (volatility > 30) {
+        recommendations.push('<li>⚡ Forte volatilité détectée. Travaillez sur la stabilisation de vos revenus.</li>');
+    }
+
+    return '<ul>' + recommendations.join('') + '</ul>';
+}
+
+// ============================================
+// SECTION 9: EXPORT XLSX
+// ============================================
+
+async function exportData() {
+    try {
+        // Créer un nouveau workbook
+        const wb = XLSX.utils.book_new();
+        
+        // Préparer les données pour l'export
+        const exportData = filteredData.map(item => ({
+            'Date': item.date,
+            'Catégorie': item.category,
+            'Revenus': item.revenue,
+            'Coûts': item.costs,
+            'Profit': item.revenue - item.costs,
+            'Marge (%)': (((item.revenue - item.costs) / item.revenue) * 100).toFixed(2)
+        }));
+
+        // Créer la feuille de données
+        const ws = XLSX.utils.json_to_sheet(exportData);
+
+        // Ajouter des styles (largeurs de colonnes)
+        ws['!cols'] = [
+            { wch: 12 },  // Date
+            { wch: 15 },  // Catégorie
+            { wch: 15 },  // Revenus
+            { wch: 15 },  // Coûts
+            { wch: 15 },  // Profit
+            { wch: 12 }   // Marge
+        ];
+
+        // Ajouter la feuille au workbook
+        XLSX.utils.book_append_sheet(wb, ws, "Données Financières");
+
+        // Créer une feuille de résumé
+        const summaryData = [
+            ['RÉSUMÉ FINANCIER', ''],
+            ['', ''],
+            ['Période', `${filteredData[0]?.date || ''} - ${filteredData[filteredData.length - 1]?.date || ''}`],
+            ['Nombre d\'entrées', filteredData.length],
+            ['', ''],
+            ['Revenus Totaux', filteredData.reduce((sum, item) => sum + item.revenue, 0)],
+            ['Coûts Totaux', filteredData.reduce((sum, item) => sum + item.costs, 0)],
+            ['Profit Total', filteredData.reduce((sum, item) => sum + (item.revenue - item.costs), 0)],
+            ['Marge Moyenne (%)', ((filteredData.reduce((sum, item) => sum + (item.revenue - item.costs), 0) / filteredData.reduce((sum, item) => sum + item.revenue, 0)) * 100).toFixed(2)]
+        ];
+
+        const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+        wsSummary['!cols'] = [{ wch: 20 }, { wch: 20 }];
+        XLSX.utils.book_append_sheet(wb, wsSummary, "Résumé");
+
+        // Générer le fichier
+        const fileName = `finances_${new Date().toISOString().split('T')[0]}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+
+        showNotification('Export XLSX réussi !', 'success');
+    } catch (error) {
+        console.error('Erreur lors de l\'export:', error);
+        showNotification('Erreur lors de l\'export XLSX', 'error');
+    }
+}
+
+function showNotification(message, type) {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 25px;
+        background: ${type === 'success' ? '#10b981' : '#ef4444'};
+        color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        z-index: 10000;
+        animation: slideIn 0.3s ease-out;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+// ============================================
+// UTILITAIRES
+// ============================================
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('fr-FR', {
+        style: 'currency',
+        currency: 'EUR'
+    }).format(value);
+}
+
+console.log('✅ Dashboard financier initialisé avec succès !');
